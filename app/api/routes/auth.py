@@ -1,1 +1,57 @@
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
+from app.api.deps import get_db
+from app.core.security import hash_password
+from app.models.user import User
+from app.schemas.auth import UserCreate, UserResponse
+
+router = APIRouter()
+
+
+@router.post(
+    "/register",
+    response_model=UserResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Register a new user",
+)
+def register(
+    user_in: UserCreate,
+    db: Session = Depends(get_db),
+) -> User:
+    normalized_email = user_in.email.strip().lower()
+
+    stmt = select(User).where(User.email == normalized_email)
+    existing_user = db.scalar(stmt)
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A user with this email already exists.",
+        )
+
+    user = User(
+        name=user_in.name.strip(),
+        email=normalized_email,
+        password_hash=hash_password(user_in.password),
+        monthly_income=user_in.monthly_income,
+        fixed_expenses=user_in.fixed_expenses,
+        currency=user_in.currency.strip().upper(),
+    )
+
+    try:
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A user with this email already exists.",
+        )
+    except Exception:
+        db.rollback()
+        raise
+
+    return user

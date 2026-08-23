@@ -4,7 +4,7 @@
 
 Project: Dabbarha / دبّرها
 
-Current phase: Phase 1c.1 - Authentication Security Foundation
+Current phase: Phase 1c.2 - Registration Endpoint
 
 Status: completed after verification
 
@@ -68,12 +68,23 @@ Status: completed after verification
 - Added security utility tests.
 - Created the minimal future authentication package structure without endpoints.
 
+### Phase 1c.2 - Registration Endpoint
+
+- Created `UserCreate` and `UserResponse` Pydantic schemas in `app/schemas/auth.py`.
+- Created database session dependency `get_db` in `app/api/deps.py`.
+- Implemented `POST /auth/register` in `app/api/routes/auth.py`.
+- Added duplicate email conflict handling returning HTTP 409.
+- Implemented password hashing during registration using Argon2.
+- Ensured safe user responses excluding `password` and `password_hash`.
+- Registered the auth router in `app/main.py` under `/auth`.
+- Added comprehensive automated API registration tests in `tests/test_auth.py`.
+
 ## What Was Intentionally NOT Built Yet
 
-- Registration endpoint
 - Login endpoint
 - `/auth/me` endpoint
 - Refresh tokens
+- Authentication middleware/dependencies for protected routes
 - Full authentication flow
 - CRUD endpoints or routes
 - Forecasting
@@ -84,7 +95,7 @@ Status: completed after verification
 
 ## Next Planned Step
 
-Phase 1c.2 - Registration endpoint
+Phase 1c.3 - Login + JWT
 
 ## Design Decision
 
@@ -110,6 +121,12 @@ No plaintext passwords are stored.
 
 No financial information is stored in JWTs.
 
+User registration accepts input via `UserCreate` and returns sanitized `UserResponse`.
+
+`password_hash` is never returned by the API.
+
+Registration does not issue JWTs directly yet (JWT issuance belongs to Phase 1c.3).
+
 ## Verification
 
 - Imported the application database configuration.
@@ -122,7 +139,11 @@ No financial information is stored in JWTs.
 - Ran Alembic upgrade against a temporary SQLite database.
 - Ran Alembic downgrade against the same temporary SQLite database.
 - Ran `pytest tests/test_models.py -q -p no:cacheprovider`: 13 passed in 0.53s.
-- Ran `pytest tests -q -p no:cacheprovider`: 22 passed in 0.88s.
+- Ran `pytest tests/test_security.py -q -p no:cacheprovider`: 9 passed in 0.44s.
+- Ran `pytest -q`: 37 passed in 1.90s.
+- Verified `GET /health` continues to return `{"status": "ok"}`.
+- Verified no new Alembic revisions were generated.
+- Verified developer SQLite database `dabbarha.db` was not modified during testing.
 
 ## Future Updates
 
