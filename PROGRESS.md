@@ -4,7 +4,7 @@
 
 Project: Dabbarha / دبّرها
 
-Current phase: Phase 1b.2 - User + Obligation Models and First Alembic Migration
+Current phase: Phase 1b.3 - Automated Model Tests
 
 Status: completed after verification
 
@@ -45,6 +45,19 @@ Status: completed after verification
 - Updated Alembic to import application models before autogeneration.
 - Generated the first Alembic migration to create `users` and `obligations`.
 
+### Phase 1b.3 - Automated Model Tests
+
+- Added pytest as the project test runner.
+- Added automated SQLAlchemy model tests.
+- Tested `User` persistence.
+- Tested `Obligation` persistence.
+- Tested `User` and `Obligation` relationships.
+- Tested financial database constraints.
+- Tested status and source database constraints.
+- Tested foreign-key enforcement.
+- Tested email uniqueness.
+- Used an isolated in-memory SQLite test database.
+
 ## What Was Intentionally NOT Built Yet
 
 - Authentication
@@ -58,13 +71,15 @@ Status: completed after verification
 
 ## Next Planned Step
 
-Phase 1c - API layer planning
+Phase 1c - Authentication foundation
 
 ## Design Decision
 
 The backend starts as a modular FastAPI API. Forecasting logic will later live in one shared module.
 
 Alembic is being introduced from the beginning so schema changes are tracked through migrations rather than manual database edits.
+
+Application tests use an isolated test database and never modify the developer's local `dabbarha.db`.
 
 ## Verification
 
@@ -77,6 +92,7 @@ Alembic is being introduced from the beginning so schema changes are tracked thr
 - Generated the initial Alembic migration through autogenerate.
 - Ran Alembic upgrade against a temporary SQLite database.
 - Ran Alembic downgrade against the same temporary SQLite database.
+- Ran `pytest tests/test_models.py -q -p no:cacheprovider`: 13 passed in 0.53s.
 
 ## Future Updates
 
