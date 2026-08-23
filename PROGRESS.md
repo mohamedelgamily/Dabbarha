@@ -4,7 +4,7 @@
 
 Project: Dabbarha / دبّرها
 
-Current phase: Phase 1b.3 - Automated Model Tests
+Current phase: Phase 1c.1 - Authentication Security Foundation
 
 Status: completed after verification
 
@@ -58,10 +58,23 @@ Status: completed after verification
 - Tested email uniqueness.
 - Used an isolated in-memory SQLite test database.
 
+### Phase 1c.1 - Authentication Security Foundation
+
+- Added password hashing with Argon2 through pwdlib.
+- Added password verification.
+- Added JWT access-token creation.
+- Added JWT decoding and validation.
+- Added authentication configuration.
+- Added security utility tests.
+- Created the minimal future authentication package structure without endpoints.
+
 ## What Was Intentionally NOT Built Yet
 
-- Authentication
-- Password hashing
+- Registration endpoint
+- Login endpoint
+- `/auth/me` endpoint
+- Refresh tokens
+- Full authentication flow
 - CRUD endpoints or routes
 - Forecasting
 - Dashboard endpoints
@@ -71,7 +84,7 @@ Status: completed after verification
 
 ## Next Planned Step
 
-Phase 1c - Authentication foundation
+Phase 1c.2 - Registration endpoint
 
 ## Design Decision
 
@@ -80,6 +93,22 @@ The backend starts as a modular FastAPI API. Forecasting logic will later live i
 Alembic is being introduced from the beginning so schema changes are tracked through migrations rather than manual database edits.
 
 Application tests use an isolated test database and never modify the developer's local `dabbarha.db`.
+
+Argon2id is used for password hashing through pwdlib.
+
+PyJWT is used for JWT handling.
+
+JWT uses HS256 for local development.
+
+JWT contains only user identity and expiration information.
+
+Access tokens initially expire after 60 minutes.
+
+Refresh tokens are intentionally deferred.
+
+No plaintext passwords are stored.
+
+No financial information is stored in JWTs.
 
 ## Verification
 
@@ -93,6 +122,7 @@ Application tests use an isolated test database and never modify the developer's
 - Ran Alembic upgrade against a temporary SQLite database.
 - Ran Alembic downgrade against the same temporary SQLite database.
 - Ran `pytest tests/test_models.py -q -p no:cacheprovider`: 13 passed in 0.53s.
+- Ran `pytest tests -q -p no:cacheprovider`: 22 passed in 0.88s.
 
 ## Future Updates
 
