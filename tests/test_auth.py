@@ -1,5 +1,5 @@
 from collections.abc import Generator
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.api.deps import get_db
-from app.core.security import decode_access_token, verify_password
+from app.core.security import create_access_token, decode_access_token, verify_password
 from app.db.database import Base
 from app.main import app
 from app.models.user import User
@@ -400,3 +400,107 @@ def test_login_email_normalized(client: TestClient) -> None:
     response = client.post("/auth/login", json=login_payload)
     assert response.status_code == 200
     assert response.json()["token_type"] == "bearer"
+
+
+def test_get_current_user_profile_success(client: TestClient) -> None:
+    register_payload = {
+        "name": "Nour Profile",
+        "email": "nour.profile@example.com",
+        "password": "CorrectPassword123!",
+        "monthly_income": "30000.00",
+        "fixed_expenses": "8000.00",
+        "currency": "USD",
+    }
+    reg_response = client.post("/auth/register", json=register_payload)
+    assert reg_response.status_code == 201
+    registered_data = reg_response.json()
+
+    login_payload = {
+        "email": "nour.profile@example.com",
+        "password": "CorrectPassword123!",
+    }
+    login_response = client.post("/auth/login", json=login_payload)
+    assert login_response.status_code == 200
+    token = login_response.json()["access_token"]
+
+    response = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["id"] == registered_data["id"]
+    assert data["name"] == "Nour Profile"
+    assert data["email"] == "nour.profile@example.com"
+    assert Decimal(str(data["monthly_income"])) == Decimal("30000.00")
+    assert Decimal(str(data["fixed_expenses"])) == Decimal("8000.00")
+    assert data["currency"] == "USD"
+    assert "created_at" in data
+    assert "password" not in data
+    assert "password_hash" not in data
+
+
+def test_get_current_user_missing_authorization_header(client: TestClient) -> None:
+    response = client.get("/auth/me")
+    assert response.status_code == 401
+    assert response.headers.get("www-authenticate") == "Bearer"
+
+
+def test_get_current_user_invalid_malformed_token(client: TestClient) -> None:
+    response = client.get("/auth/me", headers={"Authorization": "Bearer invalid.jwt.token"})
+    assert response.status_code == 401
+    assert response.headers.get("www-authenticate") == "Bearer"
+
+
+def test_get_current_user_expired_token(client: TestClient) -> None:
+    register_payload = {
+        "name": "Nour Expired",
+        "email": "nour.expired@example.com",
+        "password": "CorrectPassword123!",
+    }
+    reg_response = client.post("/auth/register", json=register_payload)
+    assert reg_response.status_code == 201
+    user_id = reg_response.json()["id"]
+
+    expired_token = create_access_token(
+        subject=str(user_id),
+        expires_delta=timedelta(seconds=-1),
+    )
+
+    response = client.get("/auth/me", headers={"Authorization": f"Bearer {expired_token}"})
+    assert response.status_code == 401
+    assert response.headers.get("www-authenticate") == "Bearer"
+
+
+def test_get_current_user_nonexistent_user(client: TestClient) -> None:
+    token = create_access_token(subject="999999")
+    response = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert response.status_code == 401
+    assert response.headers.get("www-authenticate") == "Bearer"
+
+
+def test_get_current_user_invalid_subject(client: TestClient) -> None:
+    token = create_access_token(subject="not-an-integer-id")
+    response = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert response.status_code == 401
+    assert response.headers.get("www-authenticate") == "Bearer"
+
+
+def test_get_current_user_excludes_password_and_hash(client: TestClient) -> None:
+    register_payload = {
+        "name": "Nour SecurityCheck",
+        "email": "nour.securitycheck@example.com",
+        "password": "CorrectPassword123!",
+    }
+    reg_response = client.post("/auth/register", json=register_payload)
+    assert reg_response.status_code == 201
+
+    login_payload = {
+        "email": "nour.securitycheck@example.com",
+        "password": "CorrectPassword123!",
+    }
+    login_response = client.post("/auth/login", json=login_payload)
+    token = login_response.json()["access_token"]
+
+    response = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert response.status_code == 200
+    data = response.json()
+    assert "password" not in data
+    assert "password_hash" not in data

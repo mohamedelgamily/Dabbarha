@@ -4,7 +4,7 @@
 
 Project: Dabbarha / دبّرها
 
-Current phase: Phase 1c.3 - Login + JWT
+Current phase: Phase 1c.4 - Protected /auth/me Endpoint
 
 Status: completed after verification
 
@@ -103,13 +103,31 @@ Testing:
 Next Planned Step:
 Phase 1c.4 — Protected /auth/me endpoint
 
+### Phase 1c.4 — Protected /auth/me Endpoint
+
+Built:
+- Reusable `get_current_user` dependency in `app/api/deps.py` extracting and validating Bearer tokens via `OAuth2PasswordBearer` and `decode_access_token`
+- `GET /auth/me` endpoint in `app/api/routes/auth.py` protected by `get_current_user` dependency
+- Safe `UserResponse` serialization returning public profile fields (`id`, `name`, `email`, `monthly_income`, `fixed_expenses`, `currency`, `created_at`) and omitting `password` / `password_hash`
+- Full test coverage in `tests/test_auth.py` for successful profile retrieval, missing Authorization header, malformed/tampered JWT, expired JWT, nonexistent user referenced in JWT, non-integer subject payload, and credential confidentiality
+
+Security:
+- Reusable `get_current_user` dependency enforces authentication before handler invocation
+- Invalid, expired, malformed, or nonexistent user credentials reject with standard `HTTP 401 Unauthorized` and `WWW-Authenticate: Bearer` header
+- No sensitive authentication secrets (`password`, `password_hash`) are exposed by the endpoint or dependency
+- No database schema changes or migrations introduced
+
+Testing:
+- 58 automated tests passing across models, security utilities, and authentication routes (`pytest -q`)
+
+Next Planned Step:
+Phase 1d — Obligation CRUD
+
 ## What Was Intentionally NOT Built Yet
 
-- `/auth/me` endpoint
 - Refresh tokens
-- Authentication middleware/dependencies for protected routes
-- Full authentication flow
-- CRUD endpoints or routes
+- Full logout / token invalidation
+- Obligation CRUD endpoints or routes
 - Forecasting
 - Dashboard endpoints
 - Affordability endpoints
@@ -118,7 +136,7 @@ Phase 1c.4 — Protected /auth/me endpoint
 
 ## Next Planned Step
 
-Phase 1c.4 — Protected /auth/me endpoint
+Phase 1d — Obligation CRUD
 
 ## Design Decision
 
@@ -158,6 +176,10 @@ Authentication failures for nonexistent users and wrong passwords return identic
 
 JWT payload is restricted strictly to subject (`sub`) representing user ID as a string and expiration timestamp (`exp`).
 
+`get_current_user` is implemented as a reusable FastAPI dependency combining `OAuth2PasswordBearer` and existing JWT/database validation logic.
+
+Authentication failure in `get_current_user` returns `HTTP 401 Unauthorized` with `WWW-Authenticate: Bearer` header across all failure modes (missing token, malformed signature, expired token, invalid subject claim, nonexistent user record).
+
 ## Verification
 
 - Imported the application database configuration.
@@ -171,8 +193,8 @@ JWT payload is restricted strictly to subject (`sub`) representing user ID as a 
 - Ran Alembic downgrade against the same temporary SQLite database.
 - Ran `pytest tests/test_models.py -q -p no:cacheprovider`: 13 passed in 0.53s.
 - Ran `pytest tests/test_security.py -q -p no:cacheprovider`: 9 passed in 0.44s.
-- Ran `pytest tests/test_auth.py -q -p no:cacheprovider`: 29 passed in 2.21s.
-- Ran `pytest -q`: 51 passed in 3.39s.
+- Ran `pytest tests/test_auth.py -q -p no:cacheprovider`: 36 passed in 2.50s.
+- Ran `pytest -q`: 58 passed in 3.01s.
 - Verified `GET /health` continues to return `{"status": "ok"}`.
 - Verified no new Alembic revisions were generated.
 - Verified developer SQLite database `dabbarha.db` was not modified during testing.
