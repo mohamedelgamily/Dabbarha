@@ -567,3 +567,317 @@ def test_create_obligation_missing_required_fields_rejected(
         headers={"Authorization": f"Bearer {token}"},
     )
     assert response.status_code == 422
+
+
+# ==============================================================================
+# API Integration Tests (GET /obligations)
+# ==============================================================================
+
+
+def test_list_obligations_authenticated_user_returns_own_obligations(
+    client: TestClient, db_session: Session
+) -> None:
+    # Register and login a user
+    reg_response = client.post(
+        "/auth/register",
+        json={"name": "List User", "email": "list@example.com", "password": "Password123!"},
+    )
+    assert reg_response.status_code == 201
+    user_id = reg_response.json()["id"]
+
+    login_response = client.post(
+        "/auth/login",
+        json={"email": "list@example.com", "password": "Password123!"},
+    )
+    assert login_response.status_code == 200
+    token = login_response.json()["access_token"]
+
+    # Create two obligations for this user
+    for i in range(2):
+        obligation_payload = {
+            "provider": f"provider{i}",
+            "item_name": f"Item {i}",
+            "category": "Electronics",
+            "total_amount": "10000.00",
+            "monthly_installment_amount": "1000.00",
+            "start_date": "2026-01-01",
+            "term_months": 10,
+            "due_day_of_month": 5,
+        }
+        response = client.post(
+            "/obligations",
+            json=obligation_payload,
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert response.status_code == 201
+
+    # List obligations
+    response = client.get(
+        "/obligations",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, list)
+    assert len(data) == 2
+    for item in data:
+        assert item["user_id"] == user_id
+
+
+def test_list_obligations_empty_when_user_has_none(
+    client: TestClient,
+) -> None:
+    # Register and login a user
+    reg_response = client.post(
+        "/auth/register",
+        json={"name": "Empty User", "email": "empty@example.com", "password": "Password123!"},
+    )
+    assert reg_response.status_code == 201
+
+    login_response = client.post(
+        "/auth/login",
+        json={"email": "empty@example.com", "password": "Password123!"},
+    )
+    assert login_response.status_code == 200
+    token = login_response.json()["access_token"]
+
+    response = client.get(
+        "/obligations",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, list)
+    assert len(data) == 0
+
+
+def test_list_obligations_user_a_cannot_see_user_b_obligations(
+    client: TestClient, db_session: Session
+) -> None:
+    # Register User A
+    reg_a = client.post(
+        "/auth/register",
+        json={"name": "User A", "email": "usera_list@example.com", "password": "Password123!"},
+    )
+    assert reg_a.status_code == 201
+    token_a = client.post(
+        "/auth/login",
+        json={"email": "usera_list@example.com", "password": "Password123!"},
+    ).json()["access_token"]
+
+    # Register User B
+    reg_b = client.post(
+        "/auth/register",
+        json={"name": "User B", "email": "userb_list@example.com", "password": "Password123!"},
+    )
+    assert reg_b.status_code == 201
+    token_b = client.post(
+        "/auth/login",
+        json={"email": "userb_list@example.com", "password": "Password123!"},
+    ).json()["access_token"]
+
+    # User A creates an obligation
+    obligation_payload = {
+        "provider": "aman",
+        "item_name": "Laptop",
+        "category": "Electronics",
+        "total_amount": "20000.00",
+        "monthly_installment_amount": "2000.00",
+        "start_date": "2026-03-01",
+        "term_months": 10,
+        "due_day_of_month": 15,
+    }
+    response = client.post(
+        "/obligations",
+        json=obligation_payload,
+        headers={"Authorization": f"Bearer {token_a}"},
+    )
+    assert response.status_code == 201
+
+    # User B lists obligations - should see empty list
+    response = client.get(
+        "/obligations",
+        headers={"Authorization": f"Bearer {token_b}"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, list)
+    assert len(data) == 0
+
+
+def test_list_obligations_unauthenticated_returns_401(client: TestClient) -> None:
+    response = client.get("/obligations")
+    assert response.status_code == 401
+    assert response.headers.get("www-authenticate") == "Bearer"
+
+
+def test_list_obligations_invalid_token_returns_401(client: TestClient) -> None:
+    response = client.get(
+        "/obligations",
+        headers={"Authorization": "Bearer invalid.token.value"},
+    )
+    assert response.status_code == 401
+    assert response.headers.get("www-authenticate") == "Bearer"
+
+
+def test_list_obligations_expired_token_returns_401(client: TestClient) -> None:
+    expired_token = create_access_token(subject="1", expires_delta=timedelta(seconds=-1))
+    response = client.get(
+        "/obligations",
+        headers={"Authorization": f"Bearer {expired_token}"},
+    )
+    assert response.status_code == 401
+    assert response.headers.get("www-authenticate") == "Bearer"
+
+
+# ==============================================================================
+# API Integration Tests (GET /obligations/{id})
+# ==============================================================================
+
+
+def test_get_obligation_by_id_success(client: TestClient) -> None:
+    # Register and login a user
+    reg_response = client.post(
+        "/auth/register",
+        json={"name": "Get User", "email": "get@example.com", "password": "Password123!"},
+    )
+    assert reg_response.status_code == 201
+
+    login_response = client.post(
+        "/auth/login",
+        json={"email": "get@example.com", "password": "Password123!"},
+    )
+    assert login_response.status_code == 200
+    token = login_response.json()["access_token"]
+
+    # Create an obligation
+    obligation_payload = {
+        "provider": "valU",
+        "item_name": "iPhone 15 Pro",
+        "category": "Electronics",
+        "total_amount": "36000.00",
+        "monthly_installment_amount": "3000.00",
+        "start_date": "2026-02-01",
+        "term_months": 12,
+        "due_day_of_month": 10,
+    }
+    create_response = client.post(
+        "/obligations",
+        json=obligation_payload,
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert create_response.status_code == 201
+    obligation_id = create_response.json()["id"]
+
+    # Get the obligation by ID
+    response = client.get(
+        f"/obligations/{obligation_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["id"] == obligation_id
+    assert data["provider"] == "valU"
+    assert data["item_name"] == "iPhone 15 Pro"
+    assert data["user_id"] == reg_response.json()["id"]
+
+
+def test_get_obligation_by_id_nonexistent_returns_404(client: TestClient) -> None:
+    # Register and login a user
+    reg_response = client.post(
+        "/auth/register",
+        json={"name": "NotFound User", "email": "notfound@example.com", "password": "Password123!"},
+    )
+    assert reg_response.status_code == 201
+
+    login_response = client.post(
+        "/auth/login",
+        json={"email": "notfound@example.com", "password": "Password123!"},
+    )
+    assert login_response.status_code == 200
+    token = login_response.json()["access_token"]
+
+    response = client.get(
+        "/obligations/99999",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Obligation not found"
+
+
+def test_get_obligation_by_id_user_a_cannot_see_user_b_obligation(
+    client: TestClient,
+) -> None:
+    # Register User A
+    reg_a = client.post(
+        "/auth/register",
+        json={"name": "User A", "email": "usera_get@example.com", "password": "Password123!"},
+    )
+    assert reg_a.status_code == 201
+    token_a = client.post(
+        "/auth/login",
+        json={"email": "usera_get@example.com", "password": "Password123!"},
+    ).json()["access_token"]
+
+    # Register User B
+    reg_b = client.post(
+        "/auth/register",
+        json={"name": "User B", "email": "userb_get@example.com", "password": "Password123!"},
+    )
+    assert reg_b.status_code == 201
+    token_b = client.post(
+        "/auth/login",
+        json={"email": "userb_get@example.com", "password": "Password123!"},
+    ).json()["access_token"]
+
+    # User A creates an obligation
+    obligation_payload = {
+        "provider": "aman",
+        "item_name": "Laptop",
+        "category": "Electronics",
+        "total_amount": "20000.00",
+        "monthly_installment_amount": "2000.00",
+        "start_date": "2026-03-01",
+        "term_months": 10,
+        "due_day_of_month": 15,
+    }
+    create_response = client.post(
+        "/obligations",
+        json=obligation_payload,
+        headers={"Authorization": f"Bearer {token_a}"},
+    )
+    assert create_response.status_code == 201
+    obligation_id = create_response.json()["id"]
+
+    # User B tries to get User A's obligation by ID - should get 404
+    response = client.get(
+        f"/obligations/{obligation_id}",
+        headers={"Authorization": f"Bearer {token_b}"},
+    )
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Obligation not found"
+
+
+def test_get_obligation_by_id_unauthenticated_returns_401(client: TestClient) -> None:
+    response = client.get("/obligations/1")
+    assert response.status_code == 401
+    assert response.headers.get("www-authenticate") == "Bearer"
+
+
+def test_get_obligation_by_id_invalid_token_returns_401(client: TestClient) -> None:
+    response = client.get(
+        "/obligations/1",
+        headers={"Authorization": "Bearer invalid.token.value"},
+    )
+    assert response.status_code == 401
+    assert response.headers.get("www-authenticate") == "Bearer"
+
+
+def test_get_obligation_by_id_expired_token_returns_401(client: TestClient) -> None:
+    expired_token = create_access_token(subject="1", expires_delta=timedelta(seconds=-1))
+    response = client.get(
+        "/obligations/1",
+        headers={"Authorization": f"Bearer {expired_token}"},
+    )
+    assert response.status_code == 401
+    assert response.headers.get("www-authenticate") == "Bearer"

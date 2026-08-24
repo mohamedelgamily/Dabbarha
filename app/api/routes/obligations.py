@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_db
@@ -42,4 +43,43 @@ def create_obligation(
         db.rollback()
         raise
 
+    return obligation
+
+
+@router.get(
+    "",
+    response_model=list[ObligationResponse],
+    status_code=status.HTTP_200_OK,
+    summary="List obligations for the authenticated user",
+)
+def list_obligations(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[Obligation]:
+    stmt = select(Obligation).where(Obligation.user_id == current_user.id)
+    obligations = db.scalars(stmt).all()
+    return list(obligations)
+
+
+@router.get(
+    "/{id}",
+    response_model=ObligationResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get a specific obligation by ID",
+)
+def get_obligation(
+    id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Obligation:
+    stmt = select(Obligation).where(
+        Obligation.id == id,
+        Obligation.user_id == current_user.id,
+    )
+    obligation = db.scalar(stmt)
+    if obligation is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Obligation not found",
+        )
     return obligation

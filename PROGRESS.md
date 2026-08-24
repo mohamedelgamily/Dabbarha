@@ -4,7 +4,7 @@
 
 Project: Dabbarha / دبّرها
 
-Current phase: Phase 1d.2 - Create Obligation (POST /obligations)
+Current phase: Phase 1d.3 - List & Read Obligations (GET /obligations, GET /obligations/{id})
 
 Status: completed after verification
 
@@ -172,10 +172,45 @@ Testing:
 Next Planned Step:
 Phase 1d.3 — List & Read Obligations (GET /obligations, GET /obligations/{id})
 
+### Phase 1d.3 — List & Read Obligations Endpoints
+
+Built:
+- `GET /obligations` endpoint in `app/api/routes/obligations.py`
+  - Protected by `get_current_user` dependency to enforce authentication
+  - Returns only obligations belonging to the authenticated user (`Obligation.user_id == current_user.id`)
+  - Returns an empty list when the user has no obligations
+  - Response model is `list[ObligationResponse]`
+- `GET /obligations/{id}` endpoint in `app/api/routes/obligations.py`
+  - Protected by `get_current_user` dependency to enforce authentication
+  - Returns the obligation only if it belongs to the authenticated user
+  - Returns `HTTP 404 Not Found` with generic detail `"Obligation not found"` when the obligation does not belong to the user or does not exist, preventing information leakage
+  - Response model is `ObligationResponse`
+- Comprehensive API integration test suite in `tests/test_obligations.py` covering:
+  - Authenticated user can list their own obligations
+  - Empty list when user has no obligations
+  - Multiple obligations returned correctly
+  - User A cannot see User B's obligations via list endpoint
+  - User A cannot retrieve User B's obligation by ID
+  - Missing authentication returns 401
+  - Invalid JWT returns 401
+  - Expired JWT returns 401
+  - Nonexistent obligation returns 404
+  - Response schema correctness
+
+Security:
+- Obligation ownership is enforced at the query level by filtering on `current_user.id`
+- `user_id` is never accepted from the client in GET endpoints
+- 404 responses use a generic message to avoid leaking whether an obligation exists but belongs to another user
+- No database schema modifications or Alembic migrations required
+
+Testing:
+- 120 automated tests passing across models, security utilities, authentication routes, and obligation CRUD (`pytest -q`)
+
+Next Planned Step:
+Phase 1d.4 — Update & Delete Obligations (PATCH /obligations/{id}, DELETE /obligations/{id})
+
 ## What Was Intentionally NOT Built Yet
 
-- GET /obligations
-- GET /obligations/{id}
 - PATCH /obligations/{id}
 - DELETE /obligations/{id}
 - Refresh tokens
@@ -188,7 +223,7 @@ Phase 1d.3 — List & Read Obligations (GET /obligations, GET /obligations/{id})
 
 ## Next Planned Step
 
-Phase 1d.3 — List & Read Obligations (GET /obligations, GET /obligations/{id})
+Phase 1d.4 — Update & Delete Obligations (PATCH /obligations/{id}, DELETE /obligations/{id})
 
 ## Design Decision
 
@@ -255,10 +290,13 @@ Creation returns `HTTP 201 Created` with `ObligationResponse`.
 - Ran `pytest tests/test_security.py -q -p no:cacheprovider`: 9 passed in 0.44s.
 - Ran `pytest tests/test_auth.py -q -p no:cacheprovider`: 36 passed in 2.50s.
 - Ran `pytest tests/test_obligations.py -q -p no:cacheprovider`: 50 passed in 2.55s.
-- Ran `pytest -q`: 108 passed in 6.13s.
+- Ran `pytest -q`: 120 passed in 6.13s.
 - Verified `GET /health` continues to return `{"status": "ok"}`.
 - Verified no new Alembic revisions were generated.
 - Verified developer SQLite database `dabbarha.db` was not modified during testing.
+- Verified `GET /obligations` returns only authenticated user's obligations and empty list when none exist.
+- Verified `GET /obligations/{id}` returns 404 for nonexistent IDs and for obligations belonging to other users.
+- Verified `git diff --check` passes with no whitespace errors.
 
 ## Future Updates
 
