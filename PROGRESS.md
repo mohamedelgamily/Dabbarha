@@ -4,7 +4,7 @@
 
 Project: Dabbarha / دبّرها
 
-Current phase: Phase 1d.1 - Obligation API Foundation & Schemas
+Current phase: Phase 1d.2 - Create Obligation (POST /obligations)
 
 Status: completed after verification
 
@@ -149,9 +149,31 @@ Testing:
 Next Planned Step:
 Phase 1d.2 — Create Obligation (POST /obligations)
 
+### Phase 1d.2 — Create Obligation Endpoint
+
+Built:
+- `POST /obligations` endpoint in `app/api/routes/obligations.py`
+- Protected by `get_current_user` dependency to enforce authentication
+- Input validation via `ObligationCreate` schema
+- Server-side assignment of `user_id` from the authenticated user (`current_user.id`)
+- Persistence to database via `get_db` session
+- Successful response returns `HTTP 201 Created` with serialized `ObligationResponse`
+- Comprehensive API integration test suite in `tests/test_obligations.py` covering authenticated creation, unauthenticated requests (401), invalid/expired tokens (401), user_id spoofing prevention (422), schema validation failures (422), missing required fields (422), and multi-user isolation verification
+
+Security:
+- Obligation ownership is strictly bound to the authenticated user ID extracted from JWT token
+- Extra fields including `user_id` are forbidden on the request body (`extra="forbid"`)
+- Database isolation verified: obligations are inaccessible and unlinked to other user accounts
+- No database schema modifications or Alembic migrations required
+
+Testing:
+- 108 automated tests passing across models, security utilities, authentication routes, and obligation CRUD (`pytest -q`)
+
+Next Planned Step:
+Phase 1d.3 — List & Read Obligations (GET /obligations, GET /obligations/{id})
+
 ## What Was Intentionally NOT Built Yet
 
-- POST /obligations
 - GET /obligations
 - GET /obligations/{id}
 - PATCH /obligations/{id}
@@ -166,7 +188,7 @@ Phase 1d.2 — Create Obligation (POST /obligations)
 
 ## Next Planned Step
 
-Phase 1d.2 — Create Obligation (POST /obligations)
+Phase 1d.3 — List & Read Obligations (GET /obligations, GET /obligations/{id})
 
 ## Design Decision
 
@@ -214,6 +236,10 @@ Authentication failure in `get_current_user` returns `HTTP 401 Unauthorized` wit
 
 Obligation schemas use `Decimal` for precise financial values, `date` for start dates, and `datetime` for timestamps.
 
+`POST /obligations` assigns `user_id` from `current_user.id` on the server. The client has no ability to set or override the owner ID.
+
+Creation returns `HTTP 201 Created` with `ObligationResponse`.
+
 ## Verification
 
 - Imported the application database configuration.
@@ -228,8 +254,8 @@ Obligation schemas use `Decimal` for precise financial values, `date` for start 
 - Ran `pytest tests/test_models.py -q -p no:cacheprovider`: 13 passed in 0.53s.
 - Ran `pytest tests/test_security.py -q -p no:cacheprovider`: 9 passed in 0.44s.
 - Ran `pytest tests/test_auth.py -q -p no:cacheprovider`: 36 passed in 2.50s.
-- Ran `pytest tests/test_obligations.py -q -p no:cacheprovider`: 28 passed in 0.40s.
-- Ran `pytest -q`: 86 passed in 3.44s.
+- Ran `pytest tests/test_obligations.py -q -p no:cacheprovider`: 50 passed in 2.55s.
+- Ran `pytest -q`: 108 passed in 6.13s.
 - Verified `GET /health` continues to return `{"status": "ok"}`.
 - Verified no new Alembic revisions were generated.
 - Verified developer SQLite database `dabbarha.db` was not modified during testing.
