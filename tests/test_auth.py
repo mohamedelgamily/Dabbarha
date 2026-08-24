@@ -1,4 +1,5 @@
 from collections.abc import Generator
+from datetime import datetime, timezone
 from decimal import Decimal
 
 import pytest
@@ -8,7 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.api.deps import get_db
-from app.core.security import verify_password
+from app.core.security import decode_access_token, verify_password
 from app.db.database import Base
 from app.main import app
 from app.models.user import User
@@ -204,3 +205,198 @@ def test_health_endpoint_still_works(client: TestClient) -> None:
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+def test_successful_login(client: TestClient) -> None:
+    register_payload = {
+        "name": "Nour Login",
+        "email": "nour.login@example.com",
+        "password": "CorrectPassword123!",
+        "monthly_income": "20000.00",
+        "fixed_expenses": "5000.00",
+    }
+    reg_response = client.post("/auth/register", json=register_payload)
+    assert reg_response.status_code == 201
+
+    login_payload = {
+        "email": "nour.login@example.com",
+        "password": "CorrectPassword123!",
+    }
+    response = client.post("/auth/login", json=login_payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert "access_token" in data
+    assert isinstance(data["access_token"], str)
+    assert len(data["access_token"]) > 0
+    assert data["token_type"] == "bearer"
+
+
+def test_login_jwt_can_be_decoded_and_identifies_user(client: TestClient) -> None:
+    register_payload = {
+        "name": "Nour Decodable",
+        "email": "nour.jwt@example.com",
+        "password": "CorrectPassword123!",
+    }
+    reg_response = client.post("/auth/register", json=register_payload)
+    assert reg_response.status_code == 201
+    user_id = reg_response.json()["id"]
+
+    login_payload = {
+        "email": "nour.jwt@example.com",
+        "password": "CorrectPassword123!",
+    }
+    response = client.post("/auth/login", json=login_payload)
+    assert response.status_code == 200
+    token = response.json()["access_token"]
+
+    payload = decode_access_token(token)
+    assert "sub" in payload
+    assert "exp" in payload
+    assert payload["sub"] == str(user_id)
+
+
+def test_login_jwt_expiration(client: TestClient) -> None:
+    register_payload = {
+        "name": "Nour Expiration",
+        "email": "nour.exp@example.com",
+        "password": "CorrectPassword123!",
+    }
+    reg_response = client.post("/auth/register", json=register_payload)
+    assert reg_response.status_code == 201
+
+    login_payload = {
+        "email": "nour.exp@example.com",
+        "password": "CorrectPassword123!",
+    }
+    response = client.post("/auth/login", json=login_payload)
+    assert response.status_code == 200
+    token = response.json()["access_token"]
+
+    payload = decode_access_token(token)
+    assert "exp" in payload
+    now_timestamp = datetime.now(timezone.utc).timestamp()
+    assert payload["exp"] > now_timestamp
+
+
+def test_login_wrong_password_rejected(client: TestClient) -> None:
+    register_payload = {
+        "name": "Nour WrongPW",
+        "email": "nour.wrongpw@example.com",
+        "password": "CorrectPassword123!",
+    }
+    reg_response = client.post("/auth/register", json=register_payload)
+    assert reg_response.status_code == 201
+
+    login_payload = {
+        "email": "nour.wrongpw@example.com",
+        "password": "IncorrectPassword456!",
+    }
+    response = client.post("/auth/login", json=login_payload)
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid email or password"
+    assert response.headers.get("www-authenticate") == "Bearer"
+
+
+def test_login_unknown_email_rejected(client: TestClient) -> None:
+    login_payload = {
+        "email": "nonexistent.user@example.com",
+        "password": "SomePassword123!",
+    }
+    response = client.post("/auth/login", json=login_payload)
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid email or password"
+    assert response.headers.get("www-authenticate") == "Bearer"
+
+
+def test_login_response_does_not_contain_password_or_hash(client: TestClient) -> None:
+    register_payload = {
+        "name": "Nour Sanitized",
+        "email": "nour.sanitized@example.com",
+        "password": "SecretPassword123!",
+    }
+    reg_response = client.post("/auth/register", json=register_payload)
+    assert reg_response.status_code == 201
+
+    login_payload = {
+        "email": "nour.sanitized@example.com",
+        "password": "SecretPassword123!",
+    }
+    response = client.post("/auth/login", json=login_payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert "password" not in data
+    assert "password_hash" not in data
+
+
+def test_login_jwt_does_not_contain_sensitive_financial_data(client: TestClient) -> None:
+    register_payload = {
+        "name": "Nour Financials",
+        "email": "nour.fin@example.com",
+        "password": "SecretPassword123!",
+        "monthly_income": "35000.00",
+        "fixed_expenses": "12000.00",
+    }
+    reg_response = client.post("/auth/register", json=register_payload)
+    assert reg_response.status_code == 201
+
+    login_payload = {
+        "email": "nour.fin@example.com",
+        "password": "SecretPassword123!",
+    }
+    response = client.post("/auth/login", json=login_payload)
+    assert response.status_code == 200
+    token = response.json()["access_token"]
+
+    payload = decode_access_token(token)
+    assert "monthly_income" not in payload
+    assert "fixed_expenses" not in payload
+    assert "obligations" not in payload
+    assert "password" not in payload
+    assert "password_hash" not in payload
+    assert "email" not in payload
+    assert "name" not in payload
+    assert set(payload.keys()) == {"sub", "exp"}
+
+
+@pytest.mark.parametrize("invalid_email", ["not-an-email", "@missinguser.com", "plainaddress", "missing@domain"])
+def test_login_invalid_email_rejected(client: TestClient, invalid_email: str) -> None:
+    payload = {
+        "email": invalid_email,
+        "password": "Password123!",
+    }
+    response = client.post("/auth/login", json=payload)
+    assert response.status_code == 422
+
+
+def test_login_missing_password_rejected(client: TestClient) -> None:
+    payload = {
+        "email": "user@example.com",
+    }
+    response = client.post("/auth/login", json=payload)
+    assert response.status_code == 422
+
+
+def test_login_missing_email_rejected(client: TestClient) -> None:
+    payload = {
+        "password": "Password123!",
+    }
+    response = client.post("/auth/login", json=payload)
+    assert response.status_code == 422
+
+
+def test_login_email_normalized(client: TestClient) -> None:
+    register_payload = {
+        "name": "Nour Normalize",
+        "email": "nour.normalize@example.com",
+        "password": "Password123!",
+    }
+    reg_response = client.post("/auth/register", json=register_payload)
+    assert reg_response.status_code == 201
+
+    login_payload = {
+        "email": "  NOUR.NORMALIZE@EXAMPLE.COM  ",
+        "password": "Password123!",
+    }
+    response = client.post("/auth/login", json=login_payload)
+    assert response.status_code == 200
+    assert response.json()["token_type"] == "bearer"

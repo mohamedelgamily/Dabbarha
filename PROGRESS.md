@@ -4,7 +4,7 @@
 
 Project: Dabbarha / دبّرها
 
-Current phase: Phase 1c.2 - Registration Endpoint
+Current phase: Phase 1c.3 - Login + JWT
 
 Status: completed after verification
 
@@ -79,9 +79,32 @@ Status: completed after verification
 - Registered the auth router in `app/main.py` under `/auth`.
 - Added comprehensive automated API registration tests in `tests/test_auth.py`.
 
+### Phase 1c.3 — Login + JWT
+
+Built:
+- `UserLogin` and `Token` schemas in `app/schemas/auth.py`
+- `POST /auth/login` endpoint in `app/api/routes/auth.py`
+- Credential verification using existing Argon2 utility (`verify_password`)
+- Generic authentication failure returning HTTP 401 Unauthorized with `WWW-Authenticate: Bearer`
+- JWT access token issuance via `create_access_token`
+- JWT claims containing strictly subject (`sub`) as string user ID and expiration (`exp`)
+- Comprehensive login API test suite in `tests/test_auth.py`
+
+Security:
+- Existing Argon2 password hashing reused
+- Existing JWT implementation reused
+- JWT contains only authentication claims (`sub`, `exp`)
+- No financial, email, name, or password data stored in JWT
+- Generic invalid-credential response (`"Invalid email or password"`) prevents account enumeration
+
+Testing:
+- 51 automated tests passing across models, security utilities, and authentication routes (`pytest -q`)
+
+Next Planned Step:
+Phase 1c.4 — Protected /auth/me endpoint
+
 ## What Was Intentionally NOT Built Yet
 
-- Login endpoint
 - `/auth/me` endpoint
 - Refresh tokens
 - Authentication middleware/dependencies for protected routes
@@ -95,7 +118,7 @@ Status: completed after verification
 
 ## Next Planned Step
 
-Phase 1c.3 - Login + JWT
+Phase 1c.4 — Protected /auth/me endpoint
 
 ## Design Decision
 
@@ -125,7 +148,15 @@ User registration accepts input via `UserCreate` and returns sanitized `UserResp
 
 `password_hash` is never returned by the API.
 
-Registration does not issue JWTs directly yet (JWT issuance belongs to Phase 1c.3).
+Registration does not issue JWTs directly.
+
+Login uses a standard JSON payload (`UserLogin`) returning a `Token` model with `access_token` and `token_type = "bearer"`.
+
+Email is normalized (trimmed and lowercased) before user lookup to match registration behavior.
+
+Authentication failures for nonexistent users and wrong passwords return identical HTTP 401 responses with `WWW-Authenticate: Bearer` to protect against user enumeration.
+
+JWT payload is restricted strictly to subject (`sub`) representing user ID as a string and expiration timestamp (`exp`).
 
 ## Verification
 
@@ -140,7 +171,8 @@ Registration does not issue JWTs directly yet (JWT issuance belongs to Phase 1c.
 - Ran Alembic downgrade against the same temporary SQLite database.
 - Ran `pytest tests/test_models.py -q -p no:cacheprovider`: 13 passed in 0.53s.
 - Ran `pytest tests/test_security.py -q -p no:cacheprovider`: 9 passed in 0.44s.
-- Ran `pytest -q`: 37 passed in 1.90s.
+- Ran `pytest tests/test_auth.py -q -p no:cacheprovider`: 29 passed in 2.21s.
+- Ran `pytest -q`: 51 passed in 3.39s.
 - Verified `GET /health` continues to return `{"status": "ok"}`.
 - Verified no new Alembic revisions were generated.
 - Verified developer SQLite database `dabbarha.db` was not modified during testing.
