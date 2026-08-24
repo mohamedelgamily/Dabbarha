@@ -4,7 +4,7 @@
 
 Project: Dabbarha / دبّرها
 
-Current phase: Phase 1c.4 - Protected /auth/me Endpoint
+Current phase: Phase 1d.1 - Obligation API Foundation & Schemas
 
 Status: completed after verification
 
@@ -123,11 +123,41 @@ Testing:
 Next Planned Step:
 Phase 1d — Obligation CRUD
 
+### Phase 1d.1 — Obligation API Foundation & Schemas
+
+Built:
+- `ObligationCreate` and `ObligationResponse` Pydantic schemas in `app/schemas/obligation.py`
+- Obligation router foundation in `app/api/routes/obligations.py` registered under `/obligations` prefix in `app/main.py`
+- Strict Pydantic schema validations matching database-level constraints:
+  - `total_amount >= 0`
+  - `monthly_installment_amount >= 0`
+  - `term_months > 0`
+  - `due_day_of_month` between 1 and 31
+  - `status` restricted to allowed enum literals (`active`, `completed`, `late`, `defaulted`)
+  - `source` restricted to allowed enum literals (`manual_entry`, `chatbot_entry`)
+- Security enforcement preventing client-supplied `user_id` in `ObligationCreate` (`extra="forbid"`)
+- Comprehensive schema validation test suite in `tests/test_obligations.py`
+
+Security:
+- `user_id` is excluded from `ObligationCreate` and forbidden in request payloads, ensuring user ownership is solely assigned by authenticated backend dependencies in upcoming CRUD handlers
+- Safe ORM response serialization via `ObligationResponse` compatible with SQLAlchemy models
+- No database schema changes or Alembic migrations required
+
+Testing:
+- 86 automated tests passing across models, security utilities, authentication routes, and obligation schemas (`pytest -q`)
+
+Next Planned Step:
+Phase 1d.2 — Create Obligation (POST /obligations)
+
 ## What Was Intentionally NOT Built Yet
 
+- POST /obligations
+- GET /obligations
+- GET /obligations/{id}
+- PATCH /obligations/{id}
+- DELETE /obligations/{id}
 - Refresh tokens
 - Full logout / token invalidation
-- Obligation CRUD endpoints or routes
 - Forecasting
 - Dashboard endpoints
 - Affordability endpoints
@@ -136,7 +166,7 @@ Phase 1d — Obligation CRUD
 
 ## Next Planned Step
 
-Phase 1d — Obligation CRUD
+Phase 1d.2 — Create Obligation (POST /obligations)
 
 ## Design Decision
 
@@ -180,6 +210,10 @@ JWT payload is restricted strictly to subject (`sub`) representing user ID as a 
 
 Authentication failure in `get_current_user` returns `HTTP 401 Unauthorized` with `WWW-Authenticate: Bearer` header across all failure modes (missing token, malformed signature, expired token, invalid subject claim, nonexistent user record).
 
+`ObligationCreate` forbids extra fields including `user_id` so clients cannot spoof obligation ownership. The server associates obligations to the authenticated user retrieved by `get_current_user`.
+
+Obligation schemas use `Decimal` for precise financial values, `date` for start dates, and `datetime` for timestamps.
+
 ## Verification
 
 - Imported the application database configuration.
@@ -194,7 +228,8 @@ Authentication failure in `get_current_user` returns `HTTP 401 Unauthorized` wit
 - Ran `pytest tests/test_models.py -q -p no:cacheprovider`: 13 passed in 0.53s.
 - Ran `pytest tests/test_security.py -q -p no:cacheprovider`: 9 passed in 0.44s.
 - Ran `pytest tests/test_auth.py -q -p no:cacheprovider`: 36 passed in 2.50s.
-- Ran `pytest -q`: 58 passed in 3.01s.
+- Ran `pytest tests/test_obligations.py -q -p no:cacheprovider`: 28 passed in 0.40s.
+- Ran `pytest -q`: 86 passed in 3.44s.
 - Verified `GET /health` continues to return `{"status": "ok"}`.
 - Verified no new Alembic revisions were generated.
 - Verified developer SQLite database `dabbarha.db` was not modified during testing.
