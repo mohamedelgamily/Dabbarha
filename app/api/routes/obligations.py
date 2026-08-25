@@ -5,7 +5,11 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user, get_db
 from app.models.obligation import Obligation
 from app.models.user import User
-from app.schemas.obligation import ObligationCreate, ObligationResponse
+from app.schemas.obligation import (
+    ObligationCreate,
+    ObligationResponse,
+    ObligationUpdate,
+)
 
 router = APIRouter()
 
@@ -83,3 +87,75 @@ def get_obligation(
             detail="Obligation not found",
         )
     return obligation
+
+@router.put(
+    "/{id}",
+    response_model=ObligationResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Update an obligation",
+)
+def update_obligation(
+    id: int,
+    obligation_in: ObligationUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Obligation:
+    stmt = select(Obligation).where(
+        Obligation.id == id,
+        Obligation.user_id == current_user.id,
+    )
+
+    obligation = db.scalar(stmt)
+
+    if obligation is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Obligation not found",
+        )
+
+    update_data = obligation_in.model_dump(exclude_unset=True)
+
+    for field, value in update_data.items():
+        if isinstance(value, str):
+            value = value.strip()
+        setattr(obligation, field, value)
+
+    try:
+        db.commit()
+        db.refresh(obligation)
+    except Exception:
+        db.rollback()
+        raise
+
+    return obligation
+
+
+@router.delete(
+    "/{id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete an obligation",
+)
+def delete_obligation(
+    id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> None:
+    stmt = select(Obligation).where(
+        Obligation.id == id,
+        Obligation.user_id == current_user.id,
+    )
+
+    obligation = db.scalar(stmt)
+
+    if obligation is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Obligation not found",
+        )
+
+    try:
+        db.delete(obligation)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise

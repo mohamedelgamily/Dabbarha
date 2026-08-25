@@ -22,6 +22,22 @@ class ObligationCreate(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+class ObligationUpdate(BaseModel):
+    provider: str | None = Field(default=None, min_length=1, max_length=120)
+    item_name: str | None = Field(default=None, min_length=1, max_length=160)
+    category: str | None = Field(default=None, min_length=1, max_length=80)
+    total_amount: Decimal | None = Field(default=None, ge=Decimal("0.00"))
+    monthly_installment_amount: Decimal | None = Field(
+        default=None,
+        ge=Decimal("0.00"),
+    )
+    start_date: date | None = None
+    term_months: int | None = Field(default=None, gt=0)
+    due_day_of_month: int | None = Field(default=None, ge=1, le=31)
+    status: ObligationStatus | None = None
+    source: ObligationSource | None = None
+
+    model_config = ConfigDict(extra="forbid")
 
 class ObligationResponse(BaseModel):
     id: int
