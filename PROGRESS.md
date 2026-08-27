@@ -4,7 +4,7 @@
 
 Project: Dabbarha / دبّرها
 
-Current phase: Phase 1d.3 - List & Read Obligations (GET /obligations, GET /obligations/{id})
+Current phase: Phase 1e.1 - Pure Forecast Module
 
 Status: completed after verification
 
@@ -209,25 +209,81 @@ Testing:
 Next Planned Step:
 Phase 1d.4 — Update & Delete Obligations (PATCH /obligations/{id}, DELETE /obligations/{id})
 
+### Phase 1d.4 — Update & Delete Obligations Endpoints
+
+Built:
+- `PATCH /obligations/{id}` endpoint in `app/api/routes/obligations.py`
+  - Protected by `get_current_user` dependency to enforce authentication
+  - Allows partial updates through `ObligationUpdate`
+  - Updates only obligations owned by the authenticated user
+  - Returns `HTTP 404 Not Found` with generic detail `"Obligation not found"` for nonexistent or cross-user obligations
+  - Returns the updated obligation as `ObligationResponse`
+- `DELETE /obligations/{id}` endpoint in `app/api/routes/obligations.py`
+  - Protected by `get_current_user` dependency to enforce authentication
+  - Deletes only obligations owned by the authenticated user
+  - Returns `HTTP 204 No Content` on successful deletion
+  - Returns generic `HTTP 404 Not Found` for nonexistent or cross-user obligations
+- Extended obligation API tests in `tests/test_obligations.py` for successful updates, partial updates, validation failures, authenticated ownership enforcement, successful deletion, repeated/nonexistent deletion, and cross-user isolation.
+
+Security:
+- Update and delete operations preserve the existing ownership boundary by filtering obligations by both ID and authenticated user.
+- Cross-user update/delete attempts return the same generic 404 response as nonexistent obligations.
+- No database schema modifications or Alembic migrations required.
+
+Testing:
+- Obligation CRUD tests and full suite passed after implementation.
+
+Next Planned Step:
+Phase 1e.1 — Pure Forecast Module
+
+### Phase 1e.1 — Pure Forecast Module
+
+Built:
+- Added reusable pure forecast logic in `app/core/forecast.py`.
+- Forecasting accepts monthly income, fixed expenses, a collection of obligation-like objects, a forecast start month, and a month count.
+- Produces monthly forecast rows containing:
+  - income
+  - fixed expenses
+  - active obligation payments
+  - projected buffer
+  - negative-buffer flag
+- Kept forecasting independent of FastAPI, HTTP routing, database sessions, and SQLAlchemy queries.
+- Designed the module around the existing `Obligation` model fields while using a small protocol so it can also work with compatible in-memory objects.
+- Handles forecast month normalization, obligation start dates, term month windows, obligations that begin before or after the forecast period, calendar year boundaries, mid-month start dates, and payable statuses (`active`, `late`).
+- Excludes non-payable statuses (`completed`, `defaulted`) from projected payments.
+- Added focused unit tests in `tests/test_forecast.py`.
+
+Testing:
+- Ran `pytest -q tests/test_forecast.py`: 14 passed.
+- Ran `pytest -q`: 134 passed.
+- Ran `git diff --check`: passed.
+
+Commit:
+- Phase 1e.1 completed in commit `95940bd`.
+- Previous checkpoint: `eb9b0cd`.
+
+Next Planned Step:
+Phase 1e.2 — Forecast API Integration
+
 ## What Was Intentionally NOT Built Yet
 
-- PATCH /obligations/{id}
-- DELETE /obligations/{id}
 - Refresh tokens
 - Full logout / token invalidation
-- Forecasting
+- Forecast API endpoints
+- Forecast database integration/query wiring
 - Dashboard endpoints
 - Affordability endpoints
-- Extra API endpoints
+- Chatbot logic
+- Extra API endpoints beyond completed auth and obligation CRUD
 - Additional infrastructure or abstractions
 
 ## Next Planned Step
 
-Phase 1d.4 — Update & Delete Obligations (PATCH /obligations/{id}, DELETE /obligations/{id})
+Phase 1e.2 — Forecast API Integration
 
 ## Design Decision
 
-The backend starts as a modular FastAPI API. Forecasting logic will later live in one shared module.
+The backend starts as a modular FastAPI API. Forecasting logic now lives in `app/core/forecast.py` as a pure reusable module before any API or database integration.
 
 Alembic is being introduced from the beginning so schema changes are tracked through migrations rather than manual database edits.
 
@@ -275,6 +331,10 @@ Obligation schemas use `Decimal` for precise financial values, `date` for start 
 
 Creation returns `HTTP 201 Created` with `ObligationResponse`.
 
+Obligation update and delete endpoints use the authenticated user boundary for ownership checks and return generic 404 responses for both missing and cross-user records.
+
+Forecasting is intentionally pure at Phase 1e.1: it accepts already-loaded obligation objects, performs month/date/status calculations in memory, and has no FastAPI, HTTP, database session, or SQLAlchemy query dependency.
+
 ## Verification
 
 - Imported the application database configuration.
@@ -290,12 +350,16 @@ Creation returns `HTTP 201 Created` with `ObligationResponse`.
 - Ran `pytest tests/test_security.py -q -p no:cacheprovider`: 9 passed in 0.44s.
 - Ran `pytest tests/test_auth.py -q -p no:cacheprovider`: 36 passed in 2.50s.
 - Ran `pytest tests/test_obligations.py -q -p no:cacheprovider`: 50 passed in 2.55s.
-- Ran `pytest -q`: 120 passed in 6.13s.
+- Ran `pytest -q tests/test_forecast.py`: 14 passed.
+- Ran `pytest -q`: 134 passed.
 - Verified `GET /health` continues to return `{"status": "ok"}`.
 - Verified no new Alembic revisions were generated.
 - Verified developer SQLite database `dabbarha.db` was not modified during testing.
 - Verified `GET /obligations` returns only authenticated user's obligations and empty list when none exist.
 - Verified `GET /obligations/{id}` returns 404 for nonexistent IDs and for obligations belonging to other users.
+- Verified `PATCH /obligations/{id}` updates only authenticated user's obligations.
+- Verified `DELETE /obligations/{id}` deletes only authenticated user's obligations.
+- Verified `app/core/forecast.py` produces monthly forecasts without FastAPI or database integration.
 - Verified `git diff --check` passes with no whitespace errors.
 
 ## Future Updates
