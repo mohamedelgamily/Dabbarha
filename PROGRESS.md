@@ -4,7 +4,7 @@
 
 Project: Dabbarha / دبّرها
 
-Current phase: Phase 1g.1 - Pure Affordability Engine
+Current phase: Phase 1g.2 - Affordability API
 
 Status: completed after verification
 
@@ -349,19 +349,48 @@ Commit:
 Next Planned Step:
 Phase 1g.2 — Affordability API
 
+### Phase 1g.2 — Affordability API
+
+Built:
+- Added `POST /affordability` endpoint in `app/api/routes/affordability.py`.
+- Protected by `get_current_user` dependency to enforce authentication.
+- Uses only the authenticated user's stored `monthly_income` and `fixed_expenses`; clients cannot provide financial values or `user_id`.
+- Loads only obligations belonging to the authenticated user.
+- Accepts request body with `amount` (Decimal ≥ 0), `start_date` (date), and `term_months` (int > 0) via `AffordabilityRequest` schema.
+- Derives the forecast window automatically from the proposed commitment: `start_month = month_start(start_date)` and `months = term_months`.
+- Calls `evaluate_affordability()` from `app/core/affordability.py` with no affordability or forecast math duplicated in the route.
+- Returns typed `AffordabilityResponse` exposing classification, worst projected buffer, worst buffer percentage, worst month, explanation, and per-month results.
+- Rejects unexpected query parameters with HTTP 422.
+- Added 19 focused API integration tests in `tests/test_affordability_api.py` covering authentication, user isolation, financial profile enforcement, request validation, all classification outcomes, multi-month commitments, and query-parameter rejection.
+
+Security:
+- Affordability data is scoped to the authenticated user at the obligation query boundary.
+- The endpoint does not accept client-supplied `user_id`, income, fixed expenses, or query parameters.
+- No database schema modifications or Alembic migrations required.
+
+Testing:
+- Ran `pytest -q tests/test_affordability_api.py tests/test_affordability.py tests/test_forecast.py`: 55 passed.
+- Ran `pytest -q`: 197 passed.
+- Ran `git diff --check`: passed.
+
+Commit:
+- Phase 1g.2 completed in commit `b384009`.
+
+Next Planned Step:
+Phase 1h — Chatbot Integration
+
 ## What Was Intentionally NOT Built Yet
 
 - Refresh tokens
 - Full logout / token invalidation
 - Additional dashboard endpoints beyond summary
-- Affordability API endpoints
 - Chatbot logic
-- Extra API endpoints beyond completed auth and obligation CRUD
+- Extra API endpoints beyond completed auth, obligation CRUD, forecast, dashboard, and affordability
 - Additional infrastructure or abstractions
 
 ## Next Planned Step
 
-Phase 1g.2 — Affordability API
+Phase 1h — Chatbot Integration
 
 ## Design Decision
 
@@ -423,6 +452,8 @@ Dashboard summary API is a thin authenticated adapter over the pure forecast eng
 
 Affordability logic is pure domain logic at Phase 1g.1: it reuses the forecast engine, overlays proposed commitments on projected months, validates that the forecast window covers the entire commitment period, and returns a typed result without FastAPI, HTTP, database, or authentication dependencies.
 
+The affordability API at Phase 1g.2 is a thin authenticated adapter over the pure affordability engine: the route enforces authentication, loads only the authenticated user's obligations and stored financial profile, derives the forecast window from the request, delegates evaluation to `app/core/affordability.py`, and maps the domain result to a typed response.
+
 ## Verification
 
 - Imported the application database configuration.
@@ -452,7 +483,8 @@ Affordability logic is pure domain logic at Phase 1g.1: it reuses the forecast e
 - Verified `GET /forecast` is protected, uses only authenticated user financial values, loads only authenticated user's obligations, and delegates forecast calculations to `app/core/forecast.py`.
 - Verified `GET /dashboard/summary` is protected, uses only authenticated user financial values, loads only authenticated user's obligations, and delegates current-month calculations to `app/core/forecast.py`.
 - Verified `app/core/affordability.py` evaluates commitments across their full period, classifies using the worst projected month, and returns typed results without API or database dependencies.
-- Verified `pytest -q`: 178 passed.
+- Verified `POST /affordability` is protected, uses only authenticated user financial values, loads only authenticated user's obligations, derives the forecast window from the request, and delegates evaluation to `app/core/affordability.py`.
+- Verified `pytest -q`: 197 passed.
 - Verified `git diff --check` passes with no whitespace errors.
 
 ## Future Updates
