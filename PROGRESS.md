@@ -4,7 +4,7 @@
 
 Project: Dabbarha / دبّرها
 
-Current phase: Phase 1e.2 - Forecast API Integration
+Current phase: Phase 1f.1 - Dashboard Summary API
 
 Status: completed after verification
 
@@ -291,13 +291,40 @@ Commit:
 - Phase 1e.2 completed in commit `f5f541c`.
 
 Next Planned Step:
-Phase 1f — Dashboard Summary API
+Phase 1f.1 — Dashboard Summary API
+
+### Phase 1f.1 — Dashboard Summary API
+
+Built:
+- Added protected `GET /dashboard/summary` endpoint in `app/api/routes/dashboard.py`.
+- Protected by `get_current_user` dependency to enforce authentication.
+- Uses authenticated user's stored `monthly_income` and `fixed_expenses`; clients cannot provide financial values or `user_id`.
+- Loads only obligations belonging to the authenticated user.
+- Uses `build_forecast()` from `app/core/forecast.py` to calculate current-month obligation payments and projected buffer.
+- Returns typed dashboard summary data via `DashboardSummaryResponse` schema.
+- Does not accept client-supplied financial values, `user_id`, or current month.
+- Added focused API integration tests in `tests/test_dashboard_api.py` covering authentication, user isolation, forecast integration, and response schema correctness.
+
+Security:
+- Dashboard data is scoped to the authenticated user.
+- The endpoint does not accept client-supplied financial profile values or owner IDs.
+- No database schema modifications or Alembic migrations required.
+
+Testing:
+- Ran `pytest -q`: 156 passed.
+- Ran `git diff --check`: passed.
+
+Commit:
+- Phase 1f.1 completed in commit `43daae7`.
+
+Next Planned Step:
+Phase 1g — Affordability endpoints
 
 ## What Was Intentionally NOT Built Yet
 
 - Refresh tokens
 - Full logout / token invalidation
-- Dashboard endpoints
+- Additional dashboard endpoints beyond summary
 - Affordability endpoints
 - Chatbot logic
 - Extra API endpoints beyond completed auth and obligation CRUD
@@ -305,7 +332,7 @@ Phase 1f — Dashboard Summary API
 
 ## Next Planned Step
 
-Phase 1f — Dashboard Summary API
+Phase 1g — Affordability endpoints
 
 ## Design Decision
 
@@ -363,6 +390,8 @@ Forecasting is intentionally pure at Phase 1e.1: it accepts already-loaded oblig
 
 Forecast API integration is a thin authenticated adapter over the pure forecast engine: the route validates forecast-window query parameters, loads the authenticated user's obligations, uses the authenticated user's stored income and fixed expenses, and delegates calculations to `app/core/forecast.py`.
 
+Dashboard summary API is a thin authenticated adapter over the pure forecast engine: the route uses the authenticated user's stored income and fixed expenses, loads only the authenticated user's obligations, and delegates current-month calculations to `app/core/forecast.py`.
+
 ## Verification
 
 - Imported the application database configuration.
@@ -380,7 +409,7 @@ Forecast API integration is a thin authenticated adapter over the pure forecast 
 - Ran `pytest tests/test_obligations.py -q -p no:cacheprovider`: 50 passed in 2.55s.
 - Ran `pytest -q tests/test_forecast.py`: 14 passed.
 - Ran `pytest -q tests/test_forecast.py tests/test_forecast_api.py`: 28 passed.
-- Ran `pytest -q`: 148 passed.
+- Ran `pytest -q`: 156 passed.
 - Verified `GET /health` continues to return `{"status": "ok"}`.
 - Verified no new Alembic revisions were generated.
 - Verified developer SQLite database `dabbarha.db` was not modified during testing.
@@ -390,6 +419,7 @@ Forecast API integration is a thin authenticated adapter over the pure forecast 
 - Verified `DELETE /obligations/{id}` deletes only authenticated user's obligations.
 - Verified `app/core/forecast.py` produces monthly forecasts without FastAPI or database integration.
 - Verified `GET /forecast` is protected, uses only authenticated user financial values, loads only authenticated user's obligations, and delegates forecast calculations to `app/core/forecast.py`.
+- Verified `GET /dashboard/summary` is protected, uses only authenticated user financial values, loads only authenticated user's obligations, and delegates current-month calculations to `app/core/forecast.py`.
 - Verified `git diff --check` passes with no whitespace errors.
 
 ## Future Updates
