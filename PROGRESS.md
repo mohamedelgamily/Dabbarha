@@ -4,7 +4,7 @@
 
 Project: Dabbarha / دبّرها
 
-Current phase: Phase 1f.1 - Dashboard Summary API
+Current phase: Phase 1g.1 - Pure Affordability Engine
 
 Status: completed after verification
 
@@ -318,21 +318,50 @@ Commit:
 - Phase 1f.1 completed in commit `43daae7`.
 
 Next Planned Step:
-Phase 1g — Affordability endpoints
+Phase 1g.1 — Pure Affordability Engine
+
+### Phase 1g.1 — Pure Affordability Engine
+
+Built:
+- Added pure affordability logic in `app/core/affordability.py`.
+- Introduced a generic `ProposedCommitment` domain model supporting one-time/cash purchases, recurring monthly expenses, and term-based installment commitments.
+- `ProposedCommitment` validates `amount >= Decimal("0.00")` and `term_months > 0` at the domain level.
+- `evaluate_affordability()` reuses `build_forecast()` from `app/core/forecast.py` and overlays the proposed commitment on each projected month.
+- The engine evaluates the entire commitment period; it raises `ValueError` if the forecast window does not fully cover the commitment start through its term end.
+- Overall classification is determined by the worst projected buffer month:
+  - Comfortable: remaining buffer >= 40% of monthly income
+  - Manageable: remaining buffer >= 20% and < 40%
+  - Risky: remaining buffer >= 0% and < 20% (exactly 0% is Risky)
+  - Not Affordable: remaining buffer < 0%
+- Borderline/risky explanation: "Possible, but your remaining buffer would be low."
+- Returns a typed `AffordabilityResult` containing classification, worst projected buffer, worst buffer percentage, worst month, per-month results, and an explanation string.
+- Kept independent of FastAPI, HTTP routing, database sessions, and SQLAlchemy.
+- Added 20 focused unit tests in `tests/test_affordability.py` covering all classification thresholds, worst-month behavior, multi-month and one-time commitments, existing-obligation interaction, zero-income edge cases, Decimal precision, commitment period boundaries, and domain validation.
+
+Testing:
+- Ran `pytest -q tests/test_affordability.py tests/test_forecast.py`: 36 passed.
+- Ran `pytest -q`: 178 passed.
+- Ran `git diff --check`: passed.
+
+Commit:
+- Phase 1g.1 completed in commit `8d9718c`.
+
+Next Planned Step:
+Phase 1g.2 — Affordability API
 
 ## What Was Intentionally NOT Built Yet
 
 - Refresh tokens
 - Full logout / token invalidation
 - Additional dashboard endpoints beyond summary
-- Affordability endpoints
+- Affordability API endpoints
 - Chatbot logic
 - Extra API endpoints beyond completed auth and obligation CRUD
 - Additional infrastructure or abstractions
 
 ## Next Planned Step
 
-Phase 1g — Affordability endpoints
+Phase 1g.2 — Affordability API
 
 ## Design Decision
 
@@ -392,6 +421,8 @@ Forecast API integration is a thin authenticated adapter over the pure forecast 
 
 Dashboard summary API is a thin authenticated adapter over the pure forecast engine: the route uses the authenticated user's stored income and fixed expenses, loads only the authenticated user's obligations, and delegates current-month calculations to `app/core/forecast.py`.
 
+Affordability logic is pure domain logic at Phase 1g.1: it reuses the forecast engine, overlays proposed commitments on projected months, validates that the forecast window covers the entire commitment period, and returns a typed result without FastAPI, HTTP, database, or authentication dependencies.
+
 ## Verification
 
 - Imported the application database configuration.
@@ -420,6 +451,8 @@ Dashboard summary API is a thin authenticated adapter over the pure forecast eng
 - Verified `app/core/forecast.py` produces monthly forecasts without FastAPI or database integration.
 - Verified `GET /forecast` is protected, uses only authenticated user financial values, loads only authenticated user's obligations, and delegates forecast calculations to `app/core/forecast.py`.
 - Verified `GET /dashboard/summary` is protected, uses only authenticated user financial values, loads only authenticated user's obligations, and delegates current-month calculations to `app/core/forecast.py`.
+- Verified `app/core/affordability.py` evaluates commitments across their full period, classifies using the worst projected month, and returns typed results without API or database dependencies.
+- Verified `pytest -q`: 178 passed.
 - Verified `git diff --check` passes with no whitespace errors.
 
 ## Future Updates
