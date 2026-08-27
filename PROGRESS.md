@@ -4,7 +4,7 @@
 
 Project: Dabbarha / دبّرها
 
-Current phase: Phase 1e.1 - Pure Forecast Module
+Current phase: Phase 1e.2 - Forecast API Integration
 
 Status: completed after verification
 
@@ -265,12 +265,38 @@ Commit:
 Next Planned Step:
 Phase 1e.2 — Forecast API Integration
 
+### Phase 1e.2 — Forecast API Integration
+
+Built:
+- Added protected `GET /forecast` endpoint.
+- Reused `get_current_user` so only authenticated users can request forecasts.
+- Loaded only obligations belonging to the authenticated user.
+- Used `current_user.monthly_income` and `current_user.fixed_expenses`; clients cannot provide `user_id`, income, or fixed expenses.
+- Accepted only forecast-window query inputs: `start_month` and `months`.
+- Called `build_forecast()` from `app/core/forecast.py` with no forecast math duplicated in the route.
+- Added typed forecast API response schemas for monthly forecast rows.
+- Added focused API integration tests in `tests/test_forecast_api.py` covering authentication, user isolation, forecast results, invalid parameters, and rejection of non-window query inputs.
+
+Security:
+- Forecast data is scoped to the authenticated user at the obligation query boundary.
+- The endpoint does not accept client-supplied financial profile values or owner IDs.
+- No database schema modifications or Alembic migrations required.
+
+Testing:
+- Ran `pytest -q tests/test_forecast.py tests/test_forecast_api.py`: 28 passed.
+- Ran `pytest -q`: 148 passed.
+- Ran `git diff --check`: passed.
+
+Commit:
+- Phase 1e.2 completed in commit `f5f541c`.
+
+Next Planned Step:
+Phase 1f — Dashboard Summary API
+
 ## What Was Intentionally NOT Built Yet
 
 - Refresh tokens
 - Full logout / token invalidation
-- Forecast API endpoints
-- Forecast database integration/query wiring
 - Dashboard endpoints
 - Affordability endpoints
 - Chatbot logic
@@ -279,7 +305,7 @@ Phase 1e.2 — Forecast API Integration
 
 ## Next Planned Step
 
-Phase 1e.2 — Forecast API Integration
+Phase 1f — Dashboard Summary API
 
 ## Design Decision
 
@@ -335,6 +361,8 @@ Obligation update and delete endpoints use the authenticated user boundary for o
 
 Forecasting is intentionally pure at Phase 1e.1: it accepts already-loaded obligation objects, performs month/date/status calculations in memory, and has no FastAPI, HTTP, database session, or SQLAlchemy query dependency.
 
+Forecast API integration is a thin authenticated adapter over the pure forecast engine: the route validates forecast-window query parameters, loads the authenticated user's obligations, uses the authenticated user's stored income and fixed expenses, and delegates calculations to `app/core/forecast.py`.
+
 ## Verification
 
 - Imported the application database configuration.
@@ -351,7 +379,8 @@ Forecasting is intentionally pure at Phase 1e.1: it accepts already-loaded oblig
 - Ran `pytest tests/test_auth.py -q -p no:cacheprovider`: 36 passed in 2.50s.
 - Ran `pytest tests/test_obligations.py -q -p no:cacheprovider`: 50 passed in 2.55s.
 - Ran `pytest -q tests/test_forecast.py`: 14 passed.
-- Ran `pytest -q`: 134 passed.
+- Ran `pytest -q tests/test_forecast.py tests/test_forecast_api.py`: 28 passed.
+- Ran `pytest -q`: 148 passed.
 - Verified `GET /health` continues to return `{"status": "ok"}`.
 - Verified no new Alembic revisions were generated.
 - Verified developer SQLite database `dabbarha.db` was not modified during testing.
@@ -360,6 +389,7 @@ Forecasting is intentionally pure at Phase 1e.1: it accepts already-loaded oblig
 - Verified `PATCH /obligations/{id}` updates only authenticated user's obligations.
 - Verified `DELETE /obligations/{id}` deletes only authenticated user's obligations.
 - Verified `app/core/forecast.py` produces monthly forecasts without FastAPI or database integration.
+- Verified `GET /forecast` is protected, uses only authenticated user financial values, loads only authenticated user's obligations, and delegates forecast calculations to `app/core/forecast.py`.
 - Verified `git diff --check` passes with no whitespace errors.
 
 ## Future Updates
