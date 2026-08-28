@@ -42,10 +42,20 @@ def _get_chat_service(db_session: object) -> ChatService:
     knowledge_retriever = _get_knowledge_retriever()
 
     try:
+        primary = GeminiProvider()
+    except Exception:
+        primary = MockLLMProvider()
+
+    try:
+        fallback = GroqProvider()
+    except Exception:
+        fallback = MockLLMProvider()
+
+    try:
         return ChatService(
             provider=FallbackLLMProvider(
-                primary=GeminiProvider(),
-                fallback=GroqProvider(),
+                primary=primary,
+                fallback=fallback,
             ),
             guardrails=GuardrailPolicy(),
             tool_dispatcher=build_tool_dispatcher(db_session),

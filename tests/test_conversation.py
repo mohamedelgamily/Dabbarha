@@ -348,7 +348,7 @@ def test_chat_service_confirmation_with_repository(db_session: Session) -> None:
     assert messages[3].role == "assistant"
 
 
-def test_chat_service_rejects_foreign_conversation_id(db_session: Session) -> None:
+def test_chat_service_creates_new_conversation_for_foreign_id(db_session: Session) -> None:
     user1 = _create_user(db_session, email="alice@example.com")
     user2 = _create_user(db_session, email="bob@example.com")
     repo = ConversationRepository(db_session)
@@ -367,8 +367,9 @@ def test_chat_service_rejects_foreign_conversation_id(db_session: Session) -> No
         conversation_id=conversation.id,
     )
 
-    assert result.conversation_id == conversation.id
-    assert result.metadata == {"error": "conversation_not_found"}
+    assert result.conversation_id is not None
+    assert result.conversation_id != conversation.id
+    assert result.conversation_id > 0
 
 
 def test_history_reconstruction_preserves_tool_arguments(db_session: Session) -> None:

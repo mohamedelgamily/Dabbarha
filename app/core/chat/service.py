@@ -122,12 +122,23 @@ class ChatService:
                 messages = self._history_to_messages(history)
             else:
                 messages = []
-        except ValueError as exc:
-            return ChatResponse(
-                content=str(exc),
-                metadata={"error": "conversation_not_found"},
-                conversation_id=conversation_id,
-            )
+        except ValueError:
+            if self.conversation_repository is not None and conversation_id is not None:
+                conversation = self.conversation_repository.get_or_create_conversation(
+                    user_id=user_context.user_id,
+                )
+                conversation_id = conversation.id
+                history = self.conversation_repository.get_messages(
+                    conversation_id=conversation.id,
+                    limit=self.history_limit,
+                )
+                messages = self._history_to_messages(history)
+            else:
+                return ChatResponse(
+                    content="Conversation not found",
+                    metadata={"error": "conversation_not_found"},
+                    conversation_id=conversation_id,
+                )
 
         if confirmed_tool_key:
             if confirmed_tool_key not in _PENDING_CONFIRMATIONS:
@@ -266,7 +277,7 @@ class ChatService:
                     messages.append(
                         ChatMessage(
                             role="tool",
-                            content=result.result if result.success else result.error or "",
+                            content=json.dumps(result.result) if result.success else (result.error or ""),
                             tool_name=result.tool_name,
                         )
                     )

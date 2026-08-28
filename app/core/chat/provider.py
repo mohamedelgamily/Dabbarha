@@ -88,7 +88,12 @@ class GeminiProvider:
                 contents.append(
                     types.Content(
                         role="user",
-                        parts=[types.Part.from_text(text=msg.content)],
+                        parts=[
+                            types.Part.from_function_response(
+                                name=msg.tool_name or "",
+                                response={"result": msg.content},
+                            )
+                        ],
                     )
                 )
             elif msg.role == "assistant":
@@ -247,6 +252,14 @@ class GroqProvider:
                                 },
                             }
                         ],
+                    }
+                )
+            elif msg.role == "tool":
+                messages_list.append(
+                    {
+                        "role": "tool",
+                        "content": msg.content,
+                        "tool_call_id": msg.tool_call_id or f"call_{msg.tool_name}",
                     }
                 )
             else:
