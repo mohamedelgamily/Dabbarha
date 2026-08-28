@@ -4,7 +4,7 @@
 
 Project: Dabbarha / دبّرها
 
-Current phase: Phase 1h.2 - Gemini Integration
+Current phase: Phase 1h.3 - Groq Fallback
 
 Status: completed after verification
 
@@ -445,23 +445,64 @@ Commit:
 - Phase 1h.2 completed in commit `3276d4d`.
 
 Next Planned Step:
-Phase 1h.3 — Groq Fallback
+Phase 1h.4 — Financial Tool Calling
+
+### Phase 1h.3 — Groq Fallback
+
+Built:
+- Added `GroqProvider` implementing the existing `LLMProvider` protocol in `app/core/chat/provider.py`.
+- Added `FallbackLLMProvider` that tries Gemini first and automatically falls back to Groq only when the primary returns a `provider_error`.
+- Guardrail rejections (`out_of_scope`, `injection`) and validation errors do NOT trigger fallback; they short-circuit before any provider is called.
+- When both providers fail, `FallbackLLMProvider` returns a safe generic message: `"I'm having trouble connecting right now. Please try again later."`
+- Reads `GROQ_API_KEY` from the environment via `app/core/config.py`; never hardcoded, logged, exposed, returned, or committed.
+- Model name is configurable through `GROQ_MODEL` environment variable (default: `openai/gpt-oss-120b`).
+- Converts domain `ChatMessage` representation into Groq request format inside `GroqProvider`.
+- Converts Groq response into the existing domain `ChatResponse` shape.
+- Passes tool definitions through the provider abstraction in OpenAI-compatible function-calling format (`type: "function"`, `function.name`, `function.parameters`, `required` array) verified against the selected model.
+- Does NOT execute tools in this phase.
+- `MockLLMProvider` retained for deterministic tests and as ultimate fallback when provider configuration is missing.
+- No RAG yet.
+- No conversation persistence or memory yet.
+- Added 8 focused tests in `tests/test_groq_provider.py` covering initialization, missing API key, response mapping, tool definitions, OpenAI-compatible tool-definition conversion for `openai/gpt-oss-120b`, error handling, API key secrecy, no-content handling, and MockLLMProvider continuity.
+- Added 5 fallback orchestration tests in `tests/test_chat.py` covering Gemini success without Groq invocation, Gemini failure invoking Groq, both providers failing producing a safe error, guardrail rejection not triggering fallback, and validation error not triggering fallback.
+
+Security:
+- Groq API key is read from environment configuration only.
+- Provider errors are converted to the provider abstraction's error type; raw Groq exceptions and API keys are never exposed through `POST /chat`.
+- No database schema modifications or Alembic migrations required.
+
+Dependencies:
+- Added `groq>=0.11.0,<1.0` to `requirements.txt`.
+
+Testing:
+- Ran `pytest -q tests/test_groq_provider.py tests/test_gemini_provider.py tests/test_chat.py`: 41 passed.
+- Ran `pytest -q`: 238 passed.
+- Ran `git diff --check`: passed for project changes. Note: `app/schemas/obligation.py` has a pre-existing unrelated working-tree modification that is outside the scope of this phase and was not altered.
+
+Real API verification:
+- Real Groq smoke test succeeded with model `openai/gpt-oss-120b`.
+- Gemini real smoke test reached the API but returned temporary HTTP 503 model-capacity error; Gemini remains configured as primary and will be retried automatically.
+
+Commit:
+- Phase 1h.3 completed in commit `c6083ef`.
+
+Next Planned Step:
+Phase 1h.4 — Financial Tool Calling
 
 ## What Was Intentionally NOT Built Yet
 
 - Refresh tokens
 - Full logout / token invalidation
 - Additional dashboard endpoints beyond summary
-- Groq fallback provider
 - RAG (retrieval-augmented generation)
 - Conversation memory / persistence
-- Real tool execution backed by database or external services
+- Real financial tool execution backed by database or external services
 - Extra API endpoints beyond completed auth, obligation CRUD, forecast, dashboard, affordability, and chat
 - Additional infrastructure or abstractions
 
 ## Next Planned Step
 
-Phase 1h.3 — Groq Fallback
+Phase 1h.4 — Financial Tool Calling
 
 ## Design Decision
 
@@ -528,6 +569,8 @@ The affordability API at Phase 1g.2 is a thin authenticated adapter over the pur
 The chatbot at Phase 1h.1 is provider-agnostic and keeps financial truth in deterministic backend services: the route creates `UserContext` from the authenticated user, delegates to `ChatService` for guardrail decisions, and the `LLMProvider` abstraction is designed so Gemini or Groq can be plugged in later without changing the domain layer. Financial calculations remain the responsibility of `app/core/forecast.py` and `app/core/affordability.py`.
 
 Gemini is integrated behind the existing `LLMProvider` abstraction at Phase 1h.2 using the current Google GenAI SDK. The provider reads its API key from environment configuration, converts domain messages to Gemini's request format, maps Gemini responses back to the domain shape, and passes tool definitions through for future function calling. No external provider logic leaks into the route or service layers.
+
+Provider fallback is isolated behind the `LLMProvider` abstraction at Phase 1h.3: `FallbackLLMProvider` composes any two `LLMProvider` implementations and handles fallback logic entirely within the provider layer. The chat route and `ChatService` remain unaware of which provider is primary or fallback, and no provider-specific error handling or retry logic leaks into the domain or API layers.
 
 ## Verification
 
