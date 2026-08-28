@@ -4,7 +4,7 @@
 
 Project: Dabbarha / دبّرها
 
-Current phase: Phase 1g.2 - Affordability API
+Current phase: Phase 1h.1 - Chat Foundation
 
 Status: completed after verification
 
@@ -377,15 +377,51 @@ Commit:
 - Phase 1g.2 completed in commit `b384009`.
 
 Next Planned Step:
-Phase 1h — Chatbot Integration
+Phase 1h.1 — Chat Foundation
+
+### Phase 1h.1 — Chat Foundation
+
+Built:
+- Added protected `POST /chat` endpoint in `app/api/routes/chat.py`.
+- Protected by `get_current_user` dependency to enforce authentication.
+- Created `ChatService` domain layer in `app/core/chat/` independent of FastAPI and SQLAlchemy.
+- Added `LLMProvider` protocol and `MockLLMProvider` for this phase; no external LLM calls yet.
+- Added explicit `GuardrailPolicy` with deterministic `GuardrailDecision` outcomes: `allow`, `out_of_scope`, `injection`.
+- Created `UserContext` from the authenticated user identity; passed through the domain service toward future tool execution.
+- Added backend-controlled tool abstraction with 7 conceptual `ToolDefinition`s (dashboard_summary, forecast, affordability, list_obligations, create_obligation, update_obligation, delete_obligation).
+- Tool definitions do not expose `user_id`; execution is designed around `UserContext`.
+- No Gemini/Groq integration yet.
+- No RAG yet.
+- No conversation persistence or memory yet.
+- Added 18 focused tests in `tests/test_chat.py` covering authentication, guardrail decisions, scope handling, injection blocking, provider abstraction, user context, and tool contracts.
+
+Security:
+- Chat data is scoped to the authenticated user.
+- The endpoint does not accept client-supplied `user_id` or query parameters.
+- No database schema modifications or Alembic migrations required.
+
+Testing:
+- Ran `pytest -q tests/test_chat.py`: 18 passed.
+- Ran `pytest -q`: 215 passed.
+- Ran `git diff --check`: passed.
+
+Commit:
+- Phase 1h.1 completed in commit `0104706`.
+
+Next Planned Step:
+Phase 1h.2 — Gemini Integration
 
 ## What Was Intentionally NOT Built Yet
 
 - Refresh tokens
 - Full logout / token invalidation
 - Additional dashboard endpoints beyond summary
-- Chatbot logic
-- Extra API endpoints beyond completed auth, obligation CRUD, forecast, dashboard, and affordability
+- Gemini integration
+- Groq fallback provider
+- RAG (retrieval-augmented generation)
+- Conversation memory / persistence
+- Real tool execution backed by database or external services
+- Extra API endpoints beyond completed auth, obligation CRUD, forecast, dashboard, affordability, and chat
 - Additional infrastructure or abstractions
 
 ## Next Planned Step
@@ -454,6 +490,8 @@ Affordability logic is pure domain logic at Phase 1g.1: it reuses the forecast e
 
 The affordability API at Phase 1g.2 is a thin authenticated adapter over the pure affordability engine: the route enforces authentication, loads only the authenticated user's obligations and stored financial profile, derives the forecast window from the request, delegates evaluation to `app/core/affordability.py`, and maps the domain result to a typed response.
 
+The chatbot at Phase 1h.1 is provider-agnostic and keeps financial truth in deterministic backend services: the route creates `UserContext` from the authenticated user, delegates to `ChatService` for guardrail decisions, and the `LLMProvider` abstraction is designed so Gemini or Groq can be plugged in later without changing the domain layer. Financial calculations remain the responsibility of `app/core/forecast.py` and `app/core/affordability.py`.
+
 ## Verification
 
 - Imported the application database configuration.
@@ -484,7 +522,8 @@ The affordability API at Phase 1g.2 is a thin authenticated adapter over the pur
 - Verified `GET /dashboard/summary` is protected, uses only authenticated user financial values, loads only authenticated user's obligations, and delegates current-month calculations to `app/core/forecast.py`.
 - Verified `app/core/affordability.py` evaluates commitments across their full period, classifies using the worst projected month, and returns typed results without API or database dependencies.
 - Verified `POST /affordability` is protected, uses only authenticated user financial values, loads only authenticated user's obligations, derives the forecast window from the request, and delegates evaluation to `app/core/affordability.py`.
-- Verified `pytest -q`: 197 passed.
+- Verified `POST /chat` is protected, creates `UserContext` from the authenticated user, applies guardrail decisions, and delegates to the provider abstraction without external API calls.
+- Verified `pytest -q`: 215 passed.
 - Verified `git diff --check` passes with no whitespace errors.
 
 ## Future Updates
