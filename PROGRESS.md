@@ -4,7 +4,7 @@
 
 Project: Dabbarha / دبّرها
 
-Current phase: Phase 1h.6 — RAG for Dabbarha Product Rules / Documentation
+Current phase: Phase 1h.7 — End-to-End Chat Orchestration & Hardening
 
 Status: completed after verification
 
@@ -631,8 +631,59 @@ Testing:
 Commit:
 - Phase 1h.6 completed in commit `f536cd2`.
 
+### Phase 1h.7 — End-to-End Chat Orchestration & Hardening
+
+Built:
+- Verified the complete `POST /chat` flow: authenticated user → `GuardrailPolicy` → `ConversationRepository`/history → RAG when appropriate → Gemini → Groq fallback on `provider_error` → backend `ToolDispatcher` when the model requests tools → confirmation for write tools → final response → conversation persistence.
+- Fixed provider initialization in `app/api/routes/chat.py`: `_get_chat_service()` now initializes `GeminiProvider` and `GroqProvider` in separate try/except blocks. Previously, a single broad `except Exception` caught failures from either provider and discarded a successfully mocked primary, causing tests and production fallback to incorrectly use `MockLLMProvider`.
+- Fixed conversation ownership isolation in `app/core/chat/service.py`: when a user provides a `conversation_id` belonging to another user, the service now creates a new conversation for the authenticated user instead of returning an error with the foreign conversation ID.
+- Fixed tool-result serialization in `app/core/chat/service.py`: tool results (which may be dicts, e.g., from `affordability`) are now serialized to JSON strings before being stored in `ChatMessage.content`, which expects `str`.
+- Fixed `GeminiProvider._convert_messages()` in `app/core/chat/provider.py`: tool results are now sent as `Part.from_function_response` instead of `Part.from_text`, matching the Gemini function-calling API format.
+- Fixed `GroqProvider._convert_messages()` in `app/core/chat/provider.py`: tool result messages now include `tool_call_id`, matching the OpenAI/Groq API format.
+- Fixed e2e test patch paths in `tests/test_chat_e2e.py`: tests now patch `app.api.routes.chat.GeminiProvider` (and `GroqProvider`) instead of `app.core.chat.provider.GeminiProvider`, so mocks correctly intercept the route's provider instances.
+- Updated `tests/test_conversation.py`: renamed `test_chat_service_rejects_foreign_conversation_id` to `test_chat_service_creates_new_conversation_for_foreign_id` to match the new ownership isolation behavior.
+- Added 16 end-to-end integration tests in `tests/test_chat_e2e.py` covering:
+  - Authenticated chat request
+  - Unauthenticated request rejection
+  - Empty/whitespace message rejection
+  - Unrelated request out-of-scope response
+  - Financial assistance request allowed
+  - Injection request blocked
+  - Normal financial question uses tools without RAG
+  - Documentation question uses RAG
+  - Mixed question uses both RAG and tools
+  - Multi-turn conversation uses current state
+  - Gemini success does not invoke Groq
+  - Gemini failure invokes Groq
+  - Guardrail rejection does not trigger fallback
+  - Read tool execution and response
+  - Write tool confirmation flow
+  - Ownership isolation in tools
+  - RAG injection resistance
+  - Tool loop limit
+  - No API key fallback to mock
+  - Conversation ownership isolation
+  - RAG sources in response metadata
+  - No-result RAG safe response
+- All 342 tests pass (1 skipped).
+
+Security:
+- Financial truth continues to come only from authenticated backend state/tools. RAG is explicitly marked as untrusted reference data and cannot authorize tools, override `UserContext`, override ownership, change financial calculations, request confirmation, or reveal secrets.
+- Conversation ownership is strictly bound to the authenticated user ID; cross-user access creates a new conversation for the authenticated user.
+- Write tools require explicit backend-verified confirmation; the LLM cannot generate its own authorization.
+- `UserContext` remains the sole source of authenticated identity. The model cannot provide or override `user_id`.
+- Conversation history is context only; it is never authoritative financial state and cannot authorize tool execution.
+
+Testing:
+- Ran `pytest -q`: 342 passed, 1 skipped, 1 warning.
+- Ran `git diff --check`: passed for project changes.
+- Ran `git status --short`: clean working tree with expected modifications.
+
+Commit:
+- Phase 1h.7 completed in commit `5cda880`.
+
 Next Planned Step:
-Next logical chatbot phase after RAG
+Phase 1i — Frontend Integration / Production Readiness
 
 ## What Was Intentionally NOT Built Yet
 
@@ -644,7 +695,7 @@ Next logical chatbot phase after RAG
 
 ## Next Planned Step
 
-Next logical chatbot phase after RAG
+Phase 1i — Frontend Integration / Production Readiness
 
 ## Design Decision
 
@@ -759,6 +810,17 @@ Conversation memory provides context for the LLM but is never authoritative fina
 - Verified `pytest -q`: 276 passed.
 - Verified Phase 1h.5: persistent conversation storage with `Conversation` and `ConversationMessage` SQLAlchemy models, Alembic migration `17d4d0e39961_add_conversation_tables.py`, `ConversationRepository` data-access layer, authenticated user ownership enforcement, server-generated `conversation_id`, optional `conversation_id` on `POST /chat`, conversation continuation, bounded history of most recent 20 messages, user/assistant/tool message context, normalized tool-call history, Gemini/Groq-compatible tool-call history reconstruction, conversation memory is context only and never financial truth, financial truth continues to come from authenticated backend state/tools, guardrails still apply to current user messages, historical content remains untrusted context, confirmation authorization remains separate and in-memory, no API keys/secrets/raw provider SDK objects persisted, no RAG in this phase, no unrelated features, 14 focused conversation tests, full suite: 293 passed, 1 skipped, 1 warning.
 - Verified `git diff --check` passes for project changes. Note: `app/schemas/obligation.py` has a pre-existing unrelated working-tree modification that is outside the scope of this phase and was not altered.
+- Verified Phase 1h.7: end-to-end `POST /chat` flow with authenticated user, guardrails, conversation repository, RAG for documentation questions, Gemini primary with Groq fallback on `provider_error`, backend `ToolDispatcher` for tool requests, write-tool confirmation, final response, and conversation persistence.
+- Verified Gemini → Groq fallback only triggers on `provider_error`; guardrail rejection, invalid input, and successful responses do not trigger fallback.
+- Verified RAG is scoped to `docs/knowledge/` only; personal financial questions use backend tools/database without RAG; mixed questions use both RAG and tools.
+- Verified financial truth comes only from authenticated backend state/tools; RAG context is injected with explicit untrusted-data boundary and cannot override system rules, authorize tools, override `UserContext`, override ownership, change financial calculations, request confirmation, or reveal secrets.
+- Verified conversation ownership is enforced: foreign `conversation_id` values create a new conversation for the authenticated user.
+- Verified tool-call history compatibility: Gemini emits `function_call`/`function_response` parts; Groq emits OpenAI-compatible `tool_calls`/`tool` messages with `tool_call_id`.
+- Verified all 7 financial tools (`dashboard_summary`, `forecast`, `affordability`, `list_obligations`, `create_obligation`, `update_obligation`, `delete_obligation`) are backend-controlled and user-scoped.
+- Verified write-tool confirmation: `create_obligation`, `update_obligation`, `delete_obligation` require explicit backend-verified confirmation; wrong key, wrong user, reused key, and unknown key are all rejected.
+- Verified `pytest -q`: 342 passed, 1 skipped, 1 warning.
+- Verified `git diff --check`: passed for project changes.
+- Verified `git status --short`: clean working tree with expected modifications.
 
 ## Future Updates
 
