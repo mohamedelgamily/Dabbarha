@@ -10,6 +10,7 @@ class ChatMessage:
     content: str
     tool_call_id: str | None = None
     tool_name: str | None = None
+    arguments: dict[str, object] | None = None
 
 
 @dataclass(frozen=True)
@@ -23,6 +24,7 @@ class ChatResponse:
     content: str
     metadata: dict[str, str] | None = None
     tool_calls: list[ToolCall] | None = None
+    conversation_id: int | None = None
 
 
 @dataclass(frozen=True)

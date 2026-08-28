@@ -8,6 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.database import Base
 
 if TYPE_CHECKING:
+    from app.models.conversation import Conversation
     from app.models.obligation import Obligation
 
 
@@ -52,5 +53,8 @@ class User(Base):
     )
 
     obligations: Mapped[list["Obligation"]] = relationship(
+        back_populates="user",
+    )
+    conversations: Mapped[list["Conversation"]] = relationship(
         back_populates="user",
     )

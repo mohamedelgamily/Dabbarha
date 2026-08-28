@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Protocol
+import json
+from typing import Any, Protocol
 
 from app.core.chat.schemas import ChatMessage, ChatResponse, ToolCall, ToolDefinition
 
@@ -76,13 +77,48 @@ class GeminiProvider:
 
         contents: list[object] = []
         for msg in messages:
-            role = "user" if msg.role == "user" else "model"
-            contents.append(
-                types.Content(
-                    role=role,
-                    parts=[types.Part.from_text(text=msg.content)],
+            if msg.role == "user":
+                contents.append(
+                    types.Content(
+                        role="user",
+                        parts=[types.Part.from_text(text=msg.content)],
+                    )
                 )
-            )
+            elif msg.role == "tool":
+                contents.append(
+                    types.Content(
+                        role="user",
+                        parts=[types.Part.from_text(text=msg.content)],
+                    )
+                )
+            elif msg.role == "assistant":
+                if msg.tool_name:
+                    args = msg.arguments if msg.arguments else {}
+                    contents.append(
+                        types.Content(
+                            role="model",
+                            parts=[
+                                types.Part.from_function_call(
+                                    name=msg.tool_name,
+                                    args=args,
+                                )
+                            ],
+                        )
+                    )
+                else:
+                    contents.append(
+                        types.Content(
+                            role="model",
+                            parts=[types.Part.from_text(text=msg.content)],
+                        )
+                    )
+            else:
+                contents.append(
+                    types.Content(
+                        role="model",
+                        parts=[types.Part.from_text(text=msg.content)],
+                    )
+                )
         return contents
 
     def _convert_tools(self, tools: list[ToolDefinition]) -> list[object]:
@@ -192,11 +228,35 @@ class GroqProvider:
                 metadata={"provider": "groq", "error": "provider_error"},
             )
 
-    def _convert_messages(self, messages: list[ChatMessage]) -> list[dict[str, str]]:
-        return [
-            {"role": msg.role, "content": msg.content}
-            for msg in messages
-        ]
+    def _convert_messages(self, messages: list[ChatMessage]) -> list[dict[str, Any]]:
+        messages_list: list[dict[str, Any]] = []
+        for msg in messages:
+            if msg.role == "assistant" and msg.tool_name:
+                args = msg.arguments if msg.arguments else {}
+                messages_list.append(
+                    {
+                        "role": "assistant",
+                        "content": msg.content,
+                        "tool_calls": [
+                            {
+                                "id": msg.tool_call_id or f"call_{msg.tool_name}",
+                                "type": "function",
+                                "function": {
+                                    "name": msg.tool_name,
+                                    "arguments": json.dumps(args),
+                                },
+                            }
+                        ],
+                    }
+                )
+            else:
+                messages_list.append(
+                    {
+                        "role": msg.role,
+                        "content": msg.content,
+                    }
+                )
+        return messages_list
 
     def _convert_tools(self, tools: list[ToolDefinition]) -> list[dict[str, object]]:
         return [

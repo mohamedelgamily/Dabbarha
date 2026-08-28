@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
+from app.core.chat.conversation import ConversationRepository
 from app.core.chat.guardrails import GuardrailPolicy, GuardrailDecision
 from app.core.chat.provider import LLMProvider
 from app.core.chat.schemas import ChatMessage, ChatResponse, ToolResult, UserContext
@@ -12,6 +15,9 @@ from app.core.chat.tools import (
     confirmation_key,
     tool_requires_confirmation,
 )
+
+if TYPE_CHECKING:
+    from app.models.conversation import ConversationMessage
 
 
 @dataclass(frozen=True)
@@ -35,19 +41,46 @@ class ChatService:
         guardrails: GuardrailPolicy,
         tool_dispatcher: object | None = None,
         max_tool_iterations: int = 5,
+        conversation_repository: ConversationRepository | None = None,
+        history_limit: int = 20,
     ) -> None:
         self.provider = provider
         self.guardrails = guardrails
         self.tool_definitions = ALL_TOOLS
         self.tool_dispatcher = tool_dispatcher
         self.max_tool_iterations = max_tool_iterations
+        self.conversation_repository = conversation_repository
+        self.history_limit = history_limit
 
     def chat(
         self,
         user_context: UserContext,
         message: str,
+        conversation_id: int | None = None,
         confirmed_tool_key: str | None = None,
     ) -> ChatResponse:
+        conversation: Conversation | None = None
+        try:
+            if self.conversation_repository is not None:
+                conversation = self.conversation_repository.get_or_create_conversation(
+                    user_id=user_context.user_id,
+                    conversation_id=conversation_id,
+                )
+                conversation_id = conversation.id
+                history = self.conversation_repository.get_messages(
+                    conversation_id=conversation.id,
+                    limit=self.history_limit,
+                )
+                messages = self._history_to_messages(history)
+            else:
+                messages = []
+        except ValueError as exc:
+            return ChatResponse(
+                content=str(exc),
+                metadata={"error": "conversation_not_found"},
+                conversation_id=conversation_id,
+            )
+
         if confirmed_tool_key:
             if confirmed_tool_key not in _PENDING_CONFIRMATIONS:
                 return ChatResponse(
@@ -61,21 +94,52 @@ class ChatService:
                     metadata={"error": "confirmation_user_mismatch"},
                 )
             result = self._execute_tool(user_context, pending.tool_name, pending.arguments)
+            if self.conversation_repository is not None and conversation is not None:
+                self.conversation_repository.add_message(
+                    conversation_id=conversation.id,
+                    role="user",
+                    content=message,
+                )
+                self.conversation_repository.add_message(
+                    conversation_id=conversation.id,
+                    role="assistant",
+                    content="",
+                    tool_name=pending.tool_name,
+                    tool_arguments=pending.arguments,
+                    tool_result=result.result if result.success else result.error,
+                )
             if result.success:
                 return ChatResponse(
                     content=f"Done. {pending.prompt}",
                     metadata={"tool": pending.tool_name, "status": "executed"},
+                    conversation_id=conversation_id,
                 )
             return ChatResponse(
                 content=f"I couldn't complete that action: {result.error}",
                 metadata={"tool": pending.tool_name, "status": "error"},
+                conversation_id=conversation_id,
             )
 
         decision = self.guardrails.decide(message)
         if decision.outcome != "allow":
-            return decision.response
+            if self.conversation_repository is not None and conversation is not None:
+                self.conversation_repository.add_message(
+                    conversation_id=conversation.id,
+                    role="user",
+                    content=message,
+                )
+                self.conversation_repository.add_message(
+                    conversation_id=conversation.id,
+                    role="assistant",
+                    content=decision.response.content,
+                )
+            return ChatResponse(
+                content=decision.response.content,
+                metadata=decision.response.metadata,
+                conversation_id=conversation_id,
+            )
 
-        messages = [ChatMessage(role="user", content=message)]
+        messages.append(ChatMessage(role="user", content=message))
 
         for _ in range(self.max_tool_iterations):
             response = self.provider.generate(messages, tools=self.tool_definitions)
@@ -101,12 +165,26 @@ class ChatService:
                         p for p in _PENDING_CONFIRMATIONS.values()
                         if p.user_id == user_context.user_id
                     )
+                    if self.conversation_repository is not None and conversation is not None:
+                        self.conversation_repository.add_message(
+                            conversation_id=conversation.id,
+                            role="user",
+                            content=message,
+                        )
+                        self.conversation_repository.add_message(
+                            conversation_id=conversation.id,
+                            role="assistant",
+                            content="",
+                            tool_name=pending.tool_name,
+                            tool_arguments=pending.arguments,
+                        )
                     return ChatResponse(
                         content=(
                             f"You're asking me to {pending.prompt}. "
                             "Should I proceed? Please confirm with 'yes' or 'confirm'."
                         ),
                         metadata={"pending_confirmation": pending.key},
+                        conversation_id=conversation_id,
                     )
 
                 for tool_call in response.tool_calls:
@@ -124,11 +202,38 @@ class ChatService:
 
                 continue
 
-            return response
+            if self.conversation_repository is not None and conversation is not None:
+                self.conversation_repository.add_message(
+                    conversation_id=conversation.id,
+                    role="user",
+                    content=message,
+                )
+                self.conversation_repository.add_message(
+                    conversation_id=conversation.id,
+                    role="assistant",
+                    content=response.content,
+                )
+            return ChatResponse(
+                content=response.content,
+                metadata=response.metadata,
+                conversation_id=conversation_id,
+            )
 
+        if self.conversation_repository is not None and conversation is not None:
+            self.conversation_repository.add_message(
+                conversation_id=conversation.id,
+                role="user",
+                content=message,
+            )
+            self.conversation_repository.add_message(
+                conversation_id=conversation.id,
+                role="assistant",
+                content="I'm having trouble processing that. Please try again.",
+            )
         return ChatResponse(
             content="I'm having trouble processing that. Please try again.",
             metadata={"error": "tool_loop_limit_exceeded"},
+            conversation_id=conversation_id,
         )
 
     def _execute_tool(self, context: UserContext, tool_name: str, arguments: dict[str, object]) -> ToolResult:
@@ -156,3 +261,32 @@ class ChatService:
             return f"delete obligation {obligation_id}"
 
         return f"execute {tool_name}"
+
+    def _history_to_messages(self, history: list[ConversationMessage]) -> list[ChatMessage]:
+        messages: list[ChatMessage] = []
+        for item in history:
+            if item.role == "tool":
+                messages.append(
+                    ChatMessage(
+                        role="tool",
+                        content=item.content,
+                        tool_name=item.tool_name,
+                    )
+                )
+            elif item.role == "assistant" and item.tool_name:
+                messages.append(
+                    ChatMessage(
+                        role="assistant",
+                        content=item.content,
+                        tool_name=item.tool_name,
+                        arguments=json.loads(item.tool_arguments) if item.tool_arguments else None,
+                    )
+                )
+            else:
+                messages.append(
+                    ChatMessage(
+                        role=item.role,
+                        content=item.content,
+                    )
+                )
+        return messages
