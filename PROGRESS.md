@@ -4,7 +4,7 @@
 
 Project: Dabbarha / دبّرها
 
-Current phase: Phase 1h.1 - Chat Foundation
+Current phase: Phase 1h.2 - Gemini Integration
 
 Status: completed after verification
 
@@ -411,12 +411,47 @@ Commit:
 Next Planned Step:
 Phase 1h.2 — Gemini Integration
 
+### Phase 1h.2 — Gemini Integration
+
+Built:
+- Added `GeminiProvider` implementing the existing `LLMProvider` protocol in `app/core/chat/provider.py`.
+- Uses the current Google GenAI SDK (`google-genai`) with `genai.Client(api_key=...)` architecture.
+- Reads `GEMINI_API_KEY` from the environment via `app/core/config.py`; never hardcoded, logged, exposed, returned, or committed.
+- Model name is configurable through `GEMINI_MODEL` environment variable (default: `gemini-3.7-flash`).
+- Converts domain `ChatMessage` representation into Gemini request format inside `GeminiProvider`.
+- Converts Gemini response into the existing domain `ChatResponse` shape.
+- Passes tool definitions through the provider abstraction in a format compatible with future Gemini function/tool calling.
+- Does NOT execute tools in this phase.
+- `MockLLMProvider` retained for deterministic tests.
+- No Groq integration yet.
+- No RAG yet.
+- No conversation persistence or memory yet.
+- Added 9 focused tests in `tests/test_gemini_provider.py` covering initialization, missing API key, response mapping, tool definitions, error handling, API key secrecy, and MockLLMProvider continuity.
+
+Security:
+- Gemini API key is read from environment configuration only.
+- Provider errors are converted to the provider abstraction's error type; raw Gemini exceptions and API keys are never exposed through `POST /chat`.
+- No database schema modifications or Alembic migrations required.
+
+Dependencies:
+- Added `google-genai>=0.5.0,<1.0` to `requirements.txt`.
+
+Testing:
+- Ran `pytest -q tests/test_gemini_provider.py tests/test_chat.py`: 27 passed.
+- Ran `pytest -q`: 224 passed.
+- Ran `git diff --check`: passed for project changes. Note: `app/schemas/obligation.py` has a pre-existing unrelated working-tree modification that is outside the scope of this phase and was not altered.
+
+Commit:
+- Phase 1h.2 completed in commit `3276d4d`.
+
+Next Planned Step:
+Phase 1h.3 — Groq Fallback
+
 ## What Was Intentionally NOT Built Yet
 
 - Refresh tokens
 - Full logout / token invalidation
 - Additional dashboard endpoints beyond summary
-- Gemini integration
 - Groq fallback provider
 - RAG (retrieval-augmented generation)
 - Conversation memory / persistence
@@ -426,7 +461,7 @@ Phase 1h.2 — Gemini Integration
 
 ## Next Planned Step
 
-Phase 1h — Chatbot Integration
+Phase 1h.3 — Groq Fallback
 
 ## Design Decision
 
@@ -492,6 +527,8 @@ The affordability API at Phase 1g.2 is a thin authenticated adapter over the pur
 
 The chatbot at Phase 1h.1 is provider-agnostic and keeps financial truth in deterministic backend services: the route creates `UserContext` from the authenticated user, delegates to `ChatService` for guardrail decisions, and the `LLMProvider` abstraction is designed so Gemini or Groq can be plugged in later without changing the domain layer. Financial calculations remain the responsibility of `app/core/forecast.py` and `app/core/affordability.py`.
 
+Gemini is integrated behind the existing `LLMProvider` abstraction at Phase 1h.2 using the current Google GenAI SDK. The provider reads its API key from environment configuration, converts domain messages to Gemini's request format, maps Gemini responses back to the domain shape, and passes tool definitions through for future function calling. No external provider logic leaks into the route or service layers.
+
 ## Verification
 
 - Imported the application database configuration.
@@ -523,8 +560,9 @@ The chatbot at Phase 1h.1 is provider-agnostic and keeps financial truth in dete
 - Verified `app/core/affordability.py` evaluates commitments across their full period, classifies using the worst projected month, and returns typed results without API or database dependencies.
 - Verified `POST /affordability` is protected, uses only authenticated user financial values, loads only authenticated user's obligations, derives the forecast window from the request, and delegates evaluation to `app/core/affordability.py`.
 - Verified `POST /chat` is protected, creates `UserContext` from the authenticated user, applies guardrail decisions, and delegates to the provider abstraction without external API calls.
-- Verified `pytest -q`: 215 passed.
-- Verified `git diff --check` passes with no whitespace errors.
+- Verified `GeminiProvider` initializes from `GEMINI_API_KEY`, maps responses to the domain shape, forwards tool definitions, and never exposes the API key or raw provider exceptions.
+- Verified `pytest -q`: 224 passed.
+- Verified `git diff --check` passes for project changes. Note: `app/schemas/obligation.py` has a pre-existing unrelated working-tree modification outside the scope of this phase.
 
 ## Future Updates
 
