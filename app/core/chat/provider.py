@@ -119,3 +119,101 @@ class GeminiProvider:
                             return text
 
         return "I received your request but couldn't generate a text response."
+
+
+class GroqProvider:
+    def __init__(self, api_key: str | None = None, model: str | None = None) -> None:
+        from app.core.config import GROQ_API_KEY, GROQ_MODEL
+
+        self._api_key = api_key or GROQ_API_KEY
+        self._model = model or GROQ_MODEL
+
+        if not self._api_key:
+            raise ValueError("GROQ_API_KEY is not configured")
+
+        from groq import Groq
+
+        self._client = Groq(api_key=self._api_key)
+
+    def generate(
+        self,
+        messages: list[ChatMessage],
+        tools: list[ToolDefinition] | None = None,
+    ) -> ChatResponse:
+        try:
+            groq_messages = self._convert_messages(messages)
+            groq_tools = self._convert_tools(tools) if tools else None
+
+            kwargs: dict[str, object] = {
+                "model": self._model,
+                "messages": groq_messages,
+            }
+            if groq_tools is not None:
+                kwargs["tools"] = groq_tools
+
+            response = self._client.chat.completions.create(**kwargs)
+            text = self._extract_text(response)
+
+            return ChatResponse(
+                content=text,
+                metadata={"provider": "groq", "model": self._model},
+            )
+        except Exception:
+            return ChatResponse(
+                content="I'm having trouble connecting right now. Please try again later.",
+                metadata={"provider": "groq", "error": "provider_error"},
+            )
+
+    def _convert_messages(self, messages: list[ChatMessage]) -> list[dict[str, str]]:
+        return [
+            {"role": msg.role, "content": msg.content}
+            for msg in messages
+        ]
+
+    def _convert_tools(self, tools: list[ToolDefinition]) -> list[dict[str, object]]:
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": tool.name,
+                    "description": tool.description,
+                    "parameters": tool.parameters,
+                },
+            }
+            for tool in tools
+        ]
+
+    def _extract_text(self, response: object) -> str:
+        choices = getattr(response, "choices", None)
+        if choices:
+            message = getattr(choices[0], "message", None)
+            if message is not None:
+                content = getattr(message, "content", None)
+                if content:
+                    return content
+        return "I received your request but couldn't generate a text response."
+
+
+class FallbackLLMProvider:
+    def __init__(self, primary: LLMProvider, fallback: LLMProvider) -> None:
+        self.primary = primary
+        self.fallback = fallback
+
+    def generate(
+        self,
+        messages: list[ChatMessage],
+        tools: list[ToolDefinition] | None = None,
+    ) -> ChatResponse:
+        primary_response = self.primary.generate(messages, tools)
+        if self._is_provider_error(primary_response):
+            fallback_response = self.fallback.generate(messages, tools)
+            if self._is_provider_error(fallback_response):
+                return ChatResponse(
+                    content="I'm having trouble connecting right now. Please try again later.",
+                    metadata={"provider": "fallback", "error": "provider_error"},
+                )
+            return fallback_response
+        return primary_response
+
+    def _is_provider_error(self, response: ChatResponse) -> bool:
+        return bool(response.metadata and response.metadata.get("error") == "provider_error")

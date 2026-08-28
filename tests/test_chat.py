@@ -1,6 +1,7 @@
 from collections.abc import Generator
 from datetime import date
 from decimal import Decimal
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -265,3 +266,138 @@ def test_guardrail_decision_whitespace_message() -> None:
     policy = GuardrailPolicy()
     decision = policy.decide("   ")
     assert decision.outcome == "injection"
+
+
+def test_fallback_gemini_success_does_not_invoke_groq(client: TestClient, db_session: Session) -> None:
+    _user_id, token = register_and_login(client)
+
+    with patch("app.api.routes.chat.GeminiProvider") as mock_gemini_cls, patch(
+        "app.api.routes.chat.GroqProvider"
+    ) as mock_groq_cls:
+        mock_gemini = MagicMock()
+        mock_gemini.generate.return_value = ChatResponse(content="gemini response")
+        mock_gemini_cls.return_value = mock_gemini
+
+        mock_groq = MagicMock()
+        mock_groq.generate.return_value = ChatResponse(content="groq response")
+        mock_groq_cls.return_value = mock_groq
+
+        response = client.post(
+            "/chat",
+            json={"message": "What is my budget?"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["response"] == "gemini response"
+        mock_gemini.generate.assert_called_once()
+        mock_groq.generate.assert_not_called()
+
+
+def test_fallback_gemini_provider_failure_invokes_groq(client: TestClient, db_session: Session) -> None:
+    _user_id, token = register_and_login(client)
+
+    with patch("app.api.routes.chat.GeminiProvider") as mock_gemini_cls, patch(
+        "app.api.routes.chat.GroqProvider"
+    ) as mock_groq_cls:
+        mock_gemini = MagicMock()
+        mock_gemini.generate.return_value = ChatResponse(
+            content="",
+            metadata={"error": "provider_error"},
+        )
+        mock_gemini_cls.return_value = mock_gemini
+
+        mock_groq = MagicMock()
+        mock_groq.generate.return_value = ChatResponse(content="groq fallback response")
+        mock_groq_cls.return_value = mock_groq
+
+        response = client.post(
+            "/chat",
+            json={"message": "What is my budget?"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["response"] == "groq fallback response"
+        mock_gemini.generate.assert_called_once()
+        mock_groq.generate.assert_called_once()
+
+
+def test_fallback_both_providers_failing_produces_safe_error(client: TestClient, db_session: Session) -> None:
+    _user_id, token = register_and_login(client)
+
+    with patch("app.api.routes.chat.GeminiProvider") as mock_gemini_cls, patch(
+        "app.api.routes.chat.GroqProvider"
+    ) as mock_groq_cls:
+        mock_gemini = MagicMock()
+        mock_gemini.generate.return_value = ChatResponse(
+            content="",
+            metadata={"error": "provider_error"},
+        )
+        mock_gemini_cls.return_value = mock_gemini
+
+        mock_groq = MagicMock()
+        mock_groq.generate.return_value = ChatResponse(
+            content="",
+            metadata={"error": "provider_error"},
+        )
+        mock_groq_cls.return_value = mock_groq
+
+        response = client.post(
+            "/chat",
+            json={"message": "What is my budget?"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "trouble connecting" in data["response"].lower() or "try again later" in data["response"].lower()
+
+
+def test_fallback_does_not_occur_for_guardrail_rejection(client: TestClient, db_session: Session) -> None:
+    _user_id, token = register_and_login(client)
+
+    with patch("app.api.routes.chat.GeminiProvider") as mock_gemini_cls, patch(
+        "app.api.routes.chat.GroqProvider"
+    ) as mock_groq_cls:
+        mock_gemini = MagicMock()
+        mock_gemini.generate.return_value = ChatResponse(content="gemini response")
+        mock_gemini_cls.return_value = mock_gemini
+
+        mock_groq = MagicMock()
+        mock_groq_cls.return_value = mock_groq
+
+        response = client.post(
+            "/chat",
+            json={"message": "Tell me a joke about the weather"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        assert response.status_code == 200
+        assert "finances" in response.json()["response"].lower()
+        mock_gemini.generate.assert_not_called()
+        mock_groq.generate.assert_not_called()
+
+
+def test_fallback_does_not_occur_for_validation_error(client: TestClient, db_session: Session) -> None:
+    _user_id, token = register_and_login(client)
+
+    with patch("app.api.routes.chat.GeminiProvider") as mock_gemini_cls, patch(
+        "app.api.routes.chat.GroqProvider"
+    ) as mock_groq_cls:
+        mock_gemini = MagicMock()
+        mock_gemini.generate.return_value = ChatResponse(content="gemini response")
+        mock_gemini_cls.return_value = mock_gemini
+
+        mock_groq = MagicMock()
+        mock_groq_cls.return_value = mock_groq
+
+        response = client.post(
+            "/chat",
+            json={"message": ""},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        assert response.status_code == 422
+        mock_gemini.generate.assert_not_called()
+        mock_groq.generate.assert_not_called()

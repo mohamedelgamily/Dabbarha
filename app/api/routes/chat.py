@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from app.api.deps import get_current_user
 from app.core.chat.guardrails import GuardrailPolicy
-from app.core.chat.provider import MockLLMProvider
+from app.core.chat.provider import FallbackLLMProvider, GeminiProvider, GroqProvider, MockLLMProvider
 from app.core.chat.schemas import UserContext
 from app.core.chat.service import ChatService
 from app.models.user import User
@@ -10,10 +10,21 @@ from app.schemas.chat import ChatRequest, ChatResponse
 
 router = APIRouter()
 
-_chat_service = ChatService(
-    provider=MockLLMProvider(),
-    guardrails=GuardrailPolicy(),
-)
+
+def _get_chat_service() -> ChatService:
+    try:
+        return ChatService(
+            provider=FallbackLLMProvider(
+                primary=GeminiProvider(),
+                fallback=GroqProvider(),
+            ),
+            guardrails=GuardrailPolicy(),
+        )
+    except Exception:
+        return ChatService(
+            provider=MockLLMProvider(),
+            guardrails=GuardrailPolicy(),
+        )
 
 
 @router.post(
@@ -33,6 +44,7 @@ def chat(
             detail="Chat does not accept query parameters",
         )
 
+    chat_service = _get_chat_service()
     user_context = UserContext(user_id=current_user.id)
-    result = _chat_service.chat(user_context=user_context, message=body.message)
+    result = chat_service.chat(user_context=user_context, message=body.message)
     return ChatResponse(response=result.content, metadata=result.metadata)
