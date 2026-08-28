@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from app.core.chat.schemas import ChatMessage, ChatResponse, ToolDefinition
+from app.core.chat.schemas import ChatMessage, ChatResponse, ToolCall, ToolDefinition
 
 
 class LLMProvider(Protocol):
@@ -58,10 +58,12 @@ class GeminiProvider:
 
             response = self._client.models.generate_content(**kwargs)
             text = self._extract_text(response)
+            tool_calls = self._extract_tool_calls(response)
 
             return ChatResponse(
                 content=text,
                 metadata={"provider": "gemini", "model": self._model},
+                tool_calls=tool_calls,
             )
         except Exception:
             return ChatResponse(
@@ -120,6 +122,30 @@ class GeminiProvider:
 
         return "I received your request but couldn't generate a text response."
 
+    def _extract_tool_calls(self, response: object) -> list[ToolCall] | None:
+        candidates = getattr(response, "candidates", None)
+        if not candidates:
+            return None
+
+        tool_calls: list[ToolCall] = []
+        for candidate in candidates:
+            content = getattr(candidate, "content", None)
+            if content is None:
+                continue
+            parts = getattr(content, "parts", None)
+            if not parts:
+                continue
+            for part in parts:
+                function_call = getattr(part, "function_call", None)
+                if function_call is None:
+                    continue
+                name = getattr(function_call, "name", None)
+                args = getattr(function_call, "args", None)
+                if name is not None:
+                    tool_calls.append(ToolCall(tool_name=name, arguments=dict(args) if args is not None else {}))
+
+        return tool_calls if tool_calls else None
+
 
 class GroqProvider:
     def __init__(self, api_key: str | None = None, model: str | None = None) -> None:
@@ -153,10 +179,12 @@ class GroqProvider:
 
             response = self._client.chat.completions.create(**kwargs)
             text = self._extract_text(response)
+            tool_calls = self._extract_tool_calls(response)
 
             return ChatResponse(
                 content=text,
                 metadata={"provider": "groq", "model": self._model},
+                tool_calls=tool_calls,
             )
         except Exception:
             return ChatResponse(
@@ -192,6 +220,41 @@ class GroqProvider:
                 if content:
                     return content
         return "I received your request but couldn't generate a text response."
+
+    def _extract_tool_calls(self, response: object) -> list[ToolCall] | None:
+        choices = getattr(response, "choices", None)
+        if not choices:
+            return None
+
+        message = getattr(choices[0], "message", None)
+        if message is None:
+            return None
+
+        tool_calls_attr = getattr(message, "tool_calls", None)
+        if not tool_calls_attr:
+            return None
+
+        tool_calls: list[ToolCall] = []
+        for tool_call in tool_calls_attr:
+            function = getattr(tool_call, "function", None)
+            if function is None:
+                continue
+            name = getattr(function, "name", None)
+            arguments = getattr(function, "arguments", None)
+            if name is not None:
+                parsed_args: dict[str, Any] = {}
+                if isinstance(arguments, str):
+                    import json
+
+                    try:
+                        parsed_args = json.loads(arguments)
+                    except (json.JSONDecodeError, ValueError):
+                        parsed_args = {}
+                elif isinstance(arguments, dict):
+                    parsed_args = arguments
+                tool_calls.append(ToolCall(tool_name=name, arguments=parsed_args))
+
+        return tool_calls if tool_calls else None
 
 
 class FallbackLLMProvider:

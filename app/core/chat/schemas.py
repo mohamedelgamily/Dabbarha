@@ -8,12 +8,21 @@ from typing import Any
 class ChatMessage:
     role: str
     content: str
+    tool_call_id: str | None = None
+    tool_name: str | None = None
+
+
+@dataclass(frozen=True)
+class ToolCall:
+    tool_name: str
+    arguments: dict[str, Any]
 
 
 @dataclass(frozen=True)
 class ChatResponse:
     content: str
     metadata: dict[str, str] | None = None
+    tool_calls: list[ToolCall] | None = None
 
 
 @dataclass(frozen=True)
@@ -29,6 +38,7 @@ class ToolResult:
     success: bool
     result: Any = None
     error: str | None = None
+    requires_confirmation: bool = False
 
 
 @dataclass(frozen=True)
