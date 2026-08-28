@@ -4,7 +4,7 @@
 
 Project: Dabbarha / دبّرها
 
-Current phase: Phase 1h.4 - Financial Tool Calling
+Current phase: Phase 1h.5 - Conversation Handling / Memory
 
 Status: completed after verification
 
@@ -534,21 +534,60 @@ Commit:
 - Phase 1h.4 completed in commit `6e169ed`.
 
 Next Planned Step:
-Phase 1h.5 — Conversation Handling / Memory
+Phase 1h.6 — RAG for Dabbarha Product Rules / Documentation
+
+### Phase 1h.5 — Conversation Handling / Memory
+
+Built:
+- Added persistent `Conversation` and `ConversationMessage` SQLAlchemy models in `app/models/conversation.py`.
+- Generated Alembic migration `17d4d0e39961_add_conversation_tables.py` creating `conversations` and `conversation_messages` tables with indexes and CASCADE deletes.
+- Added `ConversationRepository` data-access layer in `app/core/chat/conversation.py` for conversation lifecycle and message persistence.
+- Updated `ChatService` in `app/core/chat/service.py` to load bounded history (most recent 20 messages) and persist new messages to the conversation.
+- Added `conversation_id` to the domain `ChatResponse` schema and to the API `ChatRequest`/`ChatResponse` schemas.
+- `POST /chat` now accepts an optional `conversation_id`; when omitted, the backend creates a new conversation and returns the server-generated ID. When provided with an owned conversation, the request continues that conversation.
+- Conversation ownership is enforced at the query boundary: `ConversationRepository.get_or_create_conversation()` validates `conversation_id + authenticated user_id` and raises `ValueError("Conversation not found")` for foreign or invalid IDs.
+- History is bounded to the most recent 20 messages via `ConversationRepository.get_messages(limit=20)`; the current user message is appended after history loading and is never dropped.
+- Stored message roles: `user`, `assistant`, and `tool`. Assistant tool calls store `tool_name` and `tool_arguments` (JSON). Tool results store `tool_name` and `tool_result` (JSON).
+- Normalized tool-call history reconstruction in `_history_to_messages()` preserves `tool_name` and `arguments` for assistant tool-call messages, enabling correct provider-specific serialization.
+- Updated `GeminiProvider._convert_messages()` to emit `function_call` parts for assistant tool-call history and to map `role="tool"` to `role="user"` for Gemini's API format.
+- Updated `GroqProvider._convert_messages()` to emit OpenAI-compatible `tool_calls` for assistant tool-call history.
+- Conversation memory is context only; it is never authoritative financial state. Financial truth continues to come from authenticated backend state/tools.
+- Guardrails still apply to the current user message; historical content remains untrusted context and cannot bypass guardrails, authorize tools, override `UserContext`, override ownership, or alter financial truth.
+- Confirmation authorization remains separate from conversation history: pending confirmations are stored in-memory, are single-use, and are keyed by `(user_id, tool_name, arguments)`. Conversation persistence does not store or reuse write authorization.
+- No API keys, secrets, or raw provider SDK objects are persisted in conversation storage.
+- No RAG in this phase.
+- No unrelated features added.
+- Added 14 focused tests in `tests/test_conversation.py` covering repository creation, ownership isolation, history bounds, message persistence, tool-call detail storage, conversation creation/continuation via `ChatService`, guardrail persistence, tool-call history persistence, provider compatibility, and confirmation flow with repository.
+- Note: `app/schemas/obligation.py` has a pre-existing unrelated working-tree modification that is outside the scope of this phase and was not altered.
+
+Security:
+- Conversation ownership is strictly bound to the authenticated user ID; cross-user access returns a safe error.
+- No database schema modifications beyond the new conversation tables and migration.
+- Conversation history does not contain secrets, API keys, or raw provider objects.
+
+Testing:
+- Ran `pytest -q tests/test_conversation.py`: 17 passed, 1 skipped.
+- Ran `pytest -q`: 293 passed, 1 skipped, 1 warning.
+- Ran `git diff --check`: passed for project changes.
+
+Commit:
+- Phase 1h.5 completed in commit `3e2de0c`.
+
+Next Planned Step:
+Phase 1h.6 — RAG for Dabbarha Product Rules / Documentation
 
 ## What Was Intentionally NOT Built Yet
 
 - Refresh tokens
 - Full logout / token invalidation
 - Additional dashboard endpoints beyond summary
-- Conversation memory / persistence
-- RAG (retrieval-augmented generation) — restricted ONLY to Dabbarha's own product rules, financial feature documentation, usage guidance, and policies/documentation. RAG will never be used as the source of personal financial truth.
+- RAG (retrieval-augmented generation) — restricted ONLY to Dabbarha-owned product rules, financial feature documentation, usage guidance, and policies/documentation. RAG will never be used as the source of personal financial truth. Personal financial data, obligations, forecasts, affordability, and dashboard truth remain outside RAG and come from authenticated backend tools/database.
 - Extra API endpoints beyond completed auth, obligation CRUD, forecast, dashboard, affordability, and chat
 - Additional infrastructure or abstractions
 
 ## Next Planned Step
 
-Phase 1h.4 — Financial Tool Calling
+Phase 1h.6 — RAG for Dabbarha Product Rules / Documentation
 
 ## Design Decision
 
@@ -620,6 +659,8 @@ Provider fallback is isolated behind the `LLMProvider` abstraction at Phase 1h.3
 
 The LLM can request a tool, but the backend authorizes and executes it. User identity, ownership, financial calculations, and database access remain backend-controlled. Write operations require explicit backend-verified confirmation. The model cannot generate its own authorization or override `user_id`.
 
+Conversation memory provides context for the LLM but is never authoritative financial state. The backend remains the source of truth for authenticated identity, ownership, financial data, calculations, and tool authorization.
+
 ## Verification
 
 - Imported the application database configuration.
@@ -659,6 +700,8 @@ The LLM can request a tool, but the backend authorizes and executes it. User ide
 - Verified `forecast` tool delegates to `build_forecast()` and `affordability` tool delegates to `evaluate_affordability()` with no duplicated financial math.
 - Verified write tools require explicit backend-verified confirmation; wrong user, wrong tool, wrong arguments, reused keys, and unknown keys are all rejected.
 - Verified `pytest -q`: 276 passed.
+- Verified Phase 1h.5: persistent conversation storage with `Conversation` and `ConversationMessage` SQLAlchemy models, Alembic migration `17d4d0e39961_add_conversation_tables.py`, `ConversationRepository` data-access layer, authenticated user ownership enforcement, server-generated `conversation_id`, optional `conversation_id` on `POST /chat`, conversation continuation, bounded history of most recent 20 messages, user/assistant/tool message context, normalized tool-call history, Gemini/Groq-compatible tool-call history reconstruction, conversation memory is context only and never financial truth, financial truth continues to come from authenticated backend state/tools, guardrails still apply to current user messages, historical content remains untrusted context, confirmation authorization remains separate and in-memory, no API keys/secrets/raw provider SDK objects persisted, no RAG in this phase, no unrelated features, 14 focused conversation tests, full suite: 293 passed, 1 skipped, 1 warning.
+- Verified `git diff --check` passes for project changes. Note: `app/schemas/obligation.py` has a pre-existing unrelated working-tree modification that is outside the scope of this phase and was not altered.
 
 ## Future Updates
 
