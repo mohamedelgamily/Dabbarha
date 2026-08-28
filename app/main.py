@@ -2,6 +2,7 @@ from fastapi import FastAPI
 
 from app.api.routes.affordability import router as affordability_router
 from app.api.routes.auth import router as auth_router
+from app.api.routes.chat import router as chat_router
 from app.api.routes.dashboard import router as dashboard_router
 from app.api.routes.forecast import router as forecast_router
 from app.api.routes.obligations import router as obligations_router
@@ -13,6 +14,7 @@ app.include_router(obligations_router, prefix="/obligations", tags=["obligations
 app.include_router(forecast_router, prefix="/forecast", tags=["forecast"])
 app.include_router(dashboard_router, prefix="/dashboard", tags=["dashboard"])
 app.include_router(affordability_router, prefix="/affordability", tags=["affordability"])
+app.include_router(chat_router, prefix="/chat", tags=["chat"])
 
 
 @app.get("/health")
