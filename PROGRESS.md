@@ -4,7 +4,7 @@
 
 Project: Dabbarha / دبّرها
 
-Current phase: Phase 1h.5 - Conversation Handling / Memory
+Current phase: Phase 1h.6 — RAG for Dabbarha Product Rules / Documentation
 
 Status: completed after verification
 
@@ -573,21 +573,78 @@ Testing:
 Commit:
 - Phase 1h.5 completed in commit `3e2de0c`.
 
+### Phase 1h.6 — RAG for Dabbarha Product Rules / Documentation
+
+Built:
+- Added a pure RAG module under `app/core/rag/` with zero FastAPI, HTTP, database, SQLAlchemy, authentication, or API dependencies.
+- Implemented domain abstractions: `Document`, `DocumentChunk`, `RetrievalResult`, and `Retriever` protocol in `app/core/rag/schemas.py`.
+- Implemented deterministic chunking in `app/core/rag/chunker.py` with configurable chunk size and overlap.
+- Implemented a local deterministic TF-IDF embedding engine in `app/core/rag/embeddings.py` — no external embedding API or vector database required.
+- Implemented an in-memory vector store with cosine similarity in `app/core/rag/store.py`.
+- Implemented `KnowledgeRetriever` in `app/core/rag/retriever.py` with:
+  - Path security: only reads from `docs/knowledge/`, rejects path traversal.
+  - File filtering: only indexes approved `.md` and `.txt` files; excludes `.env`, `.db`, tests, source code, logs, and conversation history.
+  - Top-k retrieval with configurable score threshold.
+  - Lazy index building on first retrieval.
+- Implemented document ingestion pipeline in `app/core/rag/ingestion.py`.
+- Created 6 Dabbarha-owned knowledge documents in `docs/knowledge/`:
+  - `index.md` — Knowledge base index
+  - `affordability.md` — Affordability classification rules and thresholds
+  - `forecast.md` — Forecasting documentation
+  - `obligations.md` — Obligation properties, statuses, and ownership rules
+  - `chatbot.md` — Chatbot capabilities and security model
+  - `security.md` — Security model and data protection principles
+- Added RAG configuration variables to `app/core/config.py`: `RAG_ENABLED`, `RAG_TOP_K`, `RAG_CHUNK_SIZE`, `RAG_CHUNK_OVERLAP`, `RAG_SCORE_THRESHOLD`.
+- Integrated RAG into `ChatService` in `app/core/chat/service.py` with:
+  - Lightweight deterministic documentation-vs-financial routing: `_is_documentation_question()` uses pattern matching to decide whether to consult RAG or rely on backend tools.
+  - Documentation questions (e.g., "How does affordability classification work?", "What does Comfortable mean?") → RAG.
+  - Personal financial questions (e.g., "What is my projected buffer?", "What are my obligations?", "Show my dashboard") → backend tools/database only; RAG is skipped.
+  - Mixed questions (e.g., "How does Dabbarha define Comfortable, and am I Comfortable?") → both RAG and financial tools may be used.
+  - Trust boundary: retrieved documentation is injected as `[DABBARHA DOCUMENTATION REFERENCE — UNTRUSTED DATA]` with explicit instructions that it cannot override system rules, authorize tools, override `UserContext`, override ownership, change financial calculations, request confirmation, or reveal secrets.
+  - No-result behavior: when no relevant documentation exists for a documentation question, returns a safe "I don't have enough Dabbarha documentation..." response instead of fabricating rules.
+  - Source attribution: structured `rag_sources` metadata (title, source path, chunk ID, relevance score) is preserved in `ChatResponse.metadata`.
+  - RAG never executes or authorizes tools; `ToolDispatcher` remains authoritative for all financial operations.
+- Cached `KnowledgeRetriever` at module level in `app/api/routes/chat.py` via `_get_knowledge_retriever()` to avoid rebuilding the entire index on every `POST /chat` request.
+- Added 33 focused tests in `tests/test_rag.py` covering:
+  - Domain abstractions (Document, DocumentChunk, RetrievalResult, Retriever protocol)
+  - Deterministic chunking behavior
+  - Local TF-IDF embedding engine
+  - In-memory vector store search and scoring
+  - KnowledgeRetriever: approved document loading, unapproved file exclusion, `.env`/`.db` exclusion, empty corpus, source metadata preservation, top-k respect, deterministic retrieval
+  - Chat integration: documentation question uses RAG, personal financial question skips RAG, mixed question uses RAG, RAG context not persisted as financial truth, no-result safe response, source attribution in metadata, RAG prompt injection containment, guardrails still work with RAG
+- Verified all existing chat, conversation, tool, Gemini, and Groq tests continue to pass without modification.
+
+Security:
+- RAG contains ONLY Dabbarha-owned product documentation in `docs/knowledge/`. No personal financial data, obligations, forecasts, affordability, or dashboard truth is indexed.
+- `KnowledgeRetriever` only reads from the approved `docs/knowledge/` directory and rejects path traversal attempts.
+- Only `.md` and `.txt` files are indexed; `.env`, `.db`, tests, source code, logs, and conversation history are never indexed.
+- Retrieved documentation is treated as untrusted reference data, not executable instructions.
+- Financial calculations, tool authorization, ownership enforcement, and `UserContext` remain backend-controlled.
+- Conversation history is not entered into the RAG index.
+- No external embedding API, vector database, or web search is used.
+
+Testing:
+- Ran `pytest -q tests/test_rag.py`: 33 passed.
+- Ran `pytest -q`: 327 passed, 1 skipped, 2 warnings.
+- Ran `git diff --check`: passed.
+
+Commit:
+- Phase 1h.6 completed in commit `f536cd2`.
+
 Next Planned Step:
-Phase 1h.6 — RAG for Dabbarha Product Rules / Documentation
+Next logical chatbot phase after RAG
 
 ## What Was Intentionally NOT Built Yet
 
 - Refresh tokens
 - Full logout / token invalidation
 - Additional dashboard endpoints beyond summary
-- RAG (retrieval-augmented generation) — restricted ONLY to Dabbarha-owned product rules, financial feature documentation, usage guidance, and policies/documentation. RAG will never be used as the source of personal financial truth. Personal financial data, obligations, forecasts, affordability, and dashboard truth remain outside RAG and come from authenticated backend tools/database.
 - Extra API endpoints beyond completed auth, obligation CRUD, forecast, dashboard, affordability, and chat
 - Additional infrastructure or abstractions
 
 ## Next Planned Step
 
-Phase 1h.6 — RAG for Dabbarha Product Rules / Documentation
+Next logical chatbot phase after RAG
 
 ## Design Decision
 
