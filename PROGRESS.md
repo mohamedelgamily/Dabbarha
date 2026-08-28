@@ -4,7 +4,7 @@
 
 Project: Dabbarha / دبّرها
 
-Current phase: Phase 1h.3 - Groq Fallback
+Current phase: Phase 1h.4 - Financial Tool Calling
 
 Status: completed after verification
 
@@ -487,16 +487,62 @@ Commit:
 - Phase 1h.3 completed in commit `c6083ef`.
 
 Next Planned Step:
-Phase 1h.4 — Financial Tool Calling
+Phase 1h.5 — Conversation Handling / Memory
+
+### Phase 1h.4 — Financial Tool Calling
+
+Built:
+- Extended the chat domain with structured `ToolCall` support in `ChatResponse` so providers can return machine-readable tool requests alongside text.
+- `GeminiProvider` extracts `function_call` parts from Gemini response candidates and maps them to domain `ToolCall` objects.
+- `GroqProvider` extracts OpenAI-compatible `tool_calls` from Groq response messages and maps them to domain `ToolCall` objects.
+- `FallbackLLMProvider` propagates `tool_calls` from the successful provider without provider-specific logic leaking into the route or service layers.
+- Added a backend-controlled `ToolDispatcher` in `app/core/chat/tools.py` that validates arguments, routes only to known tools, enforces ownership via `UserContext`, and returns structured `ToolResult` objects.
+- Implemented 7 backend-controlled financial tools:
+  - `dashboard_summary` — read-only; reuses forecast logic for the authenticated user's current month.
+  - `forecast` — read-only; delegates to `build_forecast()` with user-scoped obligations and financial profile.
+  - `affordability` — read-only; delegates to `evaluate_affordability()` with user-scoped obligations and financial profile.
+  - `list_obligations` — read-only; returns only obligations belonging to the authenticated user.
+  - `create_obligation` — write; creates an obligation for the authenticated user only.
+  - `update_obligation` — write; updates only an obligation owned by the authenticated user.
+  - `delete_obligation` — write; deletes only an obligation owned by the authenticated user.
+- Maintained strict separation between `ToolDefinition` (what the LLM sees) and backend `Tool` execution (what the backend runs). Tool definitions do not expose `user_id`; execution receives `UserContext` from the backend.
+- `UserContext` remains the sole source of authenticated identity. The model cannot provide or override `user_id`, income, fixed expenses, or ownership.
+- Ownership is enforced at the query boundary for read tools and at the execution boundary for write tools. Cross-user reads return empty results; cross-user writes return "not found".
+- `forecast` and `affordability` tools delegate to the existing pure engines (`build_forecast()` and `evaluate_affordability()`). No financial calculation math is duplicated in the chatbot layer.
+- Read tools (`dashboard_summary`, `forecast`, `affordability`, `list_obligations`) execute immediately without confirmation.
+- Write tools (`create_obligation`, `update_obligation`, `delete_obligation`) require explicit backend-controlled confirmation before execution.
+- Confirmation uses a module-level in-memory pending-confirmation store keyed by a SHA256 hash of `(user_id, tool_name, arguments)`. The key is single-use and user-scoped. Wrong user, wrong tool, wrong arguments, or reused/unknown keys are rejected before any execution.
+- Implemented a tool-calling loop in `ChatService` with a hard limit of 5 iterations: send messages + tool definitions to the provider, execute requested tools, append results, and ask the provider for a final response.
+- Structured tool results and safe error handling: unknown tools, invalid arguments, unauthorized access, missing resources, and database failures all return safe `ToolResult` objects without exposing raw exceptions, SQL errors, stack traces, or API keys.
+- Tool execution is synchronous in this phase.
+- No RAG yet.
+- No conversation persistence or memory yet.
+- Added 38 focused tests in `tests/test_tools.py` covering tool registry, security/ownership, read tools, write tools, confirmation flow, tool loop behavior, provider compatibility, and financial correctness.
+- Note: confirmation state is in-memory and will be lost on process restart.
+
+Security:
+- The LLM can request a tool, but the backend authorizes and executes it. User identity, ownership, financial calculations, and database access remain backend-controlled.
+- Write operations require explicit backend-verified confirmation; the LLM cannot generate its own authorization.
+- No database schema modifications or Alembic migrations required.
+
+Testing:
+- Ran `pytest -q tests/test_tools.py`: 38 passed.
+- Ran `pytest -q`: 276 passed.
+- Ran `git diff --check`: passed for project changes. Note: `app/schemas/obligation.py` has a pre-existing unrelated working-tree modification that is outside the scope of this phase and was not altered.
+
+Commit:
+- Phase 1h.4 completed in commit `6e169ed`.
+
+Next Planned Step:
+Phase 1h.5 — Conversation Handling / Memory
 
 ## What Was Intentionally NOT Built Yet
 
 - Refresh tokens
 - Full logout / token invalidation
 - Additional dashboard endpoints beyond summary
-- RAG (retrieval-augmented generation)
 - Conversation memory / persistence
-- Real financial tool execution backed by database or external services
+- RAG (retrieval-augmented generation) — restricted ONLY to Dabbarha's own product rules, financial feature documentation, usage guidance, and policies/documentation. RAG will never be used as the source of personal financial truth.
 - Extra API endpoints beyond completed auth, obligation CRUD, forecast, dashboard, affordability, and chat
 - Additional infrastructure or abstractions
 
@@ -572,6 +618,8 @@ Gemini is integrated behind the existing `LLMProvider` abstraction at Phase 1h.2
 
 Provider fallback is isolated behind the `LLMProvider` abstraction at Phase 1h.3: `FallbackLLMProvider` composes any two `LLMProvider` implementations and handles fallback logic entirely within the provider layer. The chat route and `ChatService` remain unaware of which provider is primary or fallback, and no provider-specific error handling or retry logic leaks into the domain or API layers.
 
+The LLM can request a tool, but the backend authorizes and executes it. User identity, ownership, financial calculations, and database access remain backend-controlled. Write operations require explicit backend-verified confirmation. The model cannot generate its own authorization or override `user_id`.
+
 ## Verification
 
 - Imported the application database configuration.
@@ -606,6 +654,11 @@ Provider fallback is isolated behind the `LLMProvider` abstraction at Phase 1h.3
 - Verified `GeminiProvider` initializes from `GEMINI_API_KEY`, maps responses to the domain shape, forwards tool definitions, and never exposes the API key or raw provider exceptions.
 - Verified `pytest -q`: 224 passed.
 - Verified `git diff --check` passes for project changes. Note: `app/schemas/obligation.py` has a pre-existing unrelated working-tree modification outside the scope of this phase.
+- Verified `POST /chat` supports structured tool calls, backend-controlled tool execution, and write-tool confirmation flow.
+- Verified tool dispatcher routes only to known tools, enforces ownership via `UserContext`, and returns structured `ToolResult` without exposing raw database or provider exceptions.
+- Verified `forecast` tool delegates to `build_forecast()` and `affordability` tool delegates to `evaluate_affordability()` with no duplicated financial math.
+- Verified write tools require explicit backend-verified confirmation; wrong user, wrong tool, wrong arguments, reused keys, and unknown keys are all rejected.
+- Verified `pytest -q`: 276 passed.
 
 ## Future Updates
 
