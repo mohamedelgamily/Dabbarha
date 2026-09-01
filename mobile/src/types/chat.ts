@@ -14,3 +14,17 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
 }
+
+export interface SendMessageParams {
+  message: string;
+  conversation_id?: number | null;
+  confirmationToolKey?: string | null;
+}
+
+export type PendingConfirmation = {
+  key: string;
+  message: string;
+  conversationId: number;
+};
+
+export type ToolExecutionStatus = 'executed' | 'error';

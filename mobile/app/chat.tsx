@@ -9,13 +9,18 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { chatApi } from '@/api/chat';
-import { ChatMessage, ChatResponse } from '@/types/chat';
+import {
+  ChatMessage,
+  ChatResponse,
+  PendingConfirmation,
+} from '@/types/chat';
 import { ApiErrorDetail } from '@/types/api';
 import { ScreenWrapper } from '@/components/common/ScreenWrapper';
 import { Typography } from '@/components/common/Typography';
 import { Button } from '@/components/common/Button';
+import { Card } from '@/components/common/Card';
 import { ErrorBanner } from '@/components/common/ErrorBanner';
 import { colors, spacing, borderRadius } from '@/constants/theme';
 
@@ -47,28 +52,99 @@ function MessageBubble({ message }: MessageBubbleProps) {
   );
 }
 
+interface ConfirmationCardProps {
+  onConfirm: () => void;
+  onCancel: () => void;
+  isPending: boolean;
+}
+
+function ConfirmationCard({ onConfirm, onCancel, isPending }: ConfirmationCardProps) {
+  return (
+    <Card style={styles.confirmationCard} variant="outlined">
+      <Typography variant="bodyBold" style={styles.confirmationTitle}>
+        Confirm Financial Action
+      </Typography>
+      <Typography
+        variant="body"
+        color={colors.textSecondary}
+        style={styles.confirmationDescription}
+      >
+        The assistant wants to modify your financial data. Please confirm to proceed or cancel to abort.
+      </Typography>
+      <View style={styles.confirmationButtons}>
+        <Button
+          title="Confirm"
+          onPress={onConfirm}
+          isLoading={isPending}
+          style={styles.confirmButton}
+        />
+        <Button
+          title="Cancel"
+          variant="secondary"
+          onPress={onCancel}
+          disabled={isPending}
+          style={styles.cancelButton}
+        />
+      </View>
+    </Card>
+  );
+}
+
 export default function ChatScreen() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const scrollViewRef = useRef<ScrollView>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [conversationId, setConversationId] = useState<number | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [pendingConfirmation, setPendingConfirmation] =
+    useState<PendingConfirmation | null>(null);
+  const [cancelledMessage, setCancelledMessage] = useState<string | null>(null);
+
+  const scrollToBottom = useCallback(() => {
+    setTimeout(() => {
+      scrollViewRef.current?.scrollToEnd({ animated: true });
+    }, 100);
+  }, []);
 
   const mutation = useMutation<
     ChatResponse,
     { statusCode: number; message: string; detail?: string | ApiErrorDetail[] },
-    string
+    { message: string; confirmationToolKey?: string | null }
   >({
-    mutationFn: async (message) => {
+    mutationFn: async ({ message, confirmationToolKey }) => {
       return chatApi.sendMessage({
         message,
         conversation_id: conversationId,
+        confirmationToolKey,
       });
     },
-    onSuccess: (data) => {
+    onSuccess: (data, variables) => {
       setConversationId(data.conversation_id);
       setInputText('');
+
+      const metadata = data.metadata || {};
+
+      if (metadata.pending_confirmation) {
+        setPendingConfirmation({
+          key: metadata.pending_confirmation,
+          message: variables.message,
+          conversationId: data.conversation_id,
+        });
+      } else {
+        setPendingConfirmation(null);
+
+        if (metadata.tool && metadata.status === 'executed') {
+          queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+          queryClient.invalidateQueries({ queryKey: ['obligations'] });
+        }
+
+        if (metadata.error === 'conversation_not_found') {
+          setConversationId(null);
+        }
+      }
+
       setMessages((prev) => [
         ...prev,
         {
@@ -83,12 +159,6 @@ export default function ChatScreen() {
     },
   });
 
-  const scrollToBottom = useCallback(() => {
-    setTimeout(() => {
-      scrollViewRef.current?.scrollToEnd({ animated: true });
-    }, 100);
-  }, []);
-
   const handleSend = () => {
     const trimmed = inputText.trim();
     if (!trimmed || mutation.isPending) {
@@ -96,6 +166,7 @@ export default function ChatScreen() {
     }
 
     setApiError(null);
+    setCancelledMessage(null);
     setMessages((prev) => [
       ...prev,
       {
@@ -106,11 +177,50 @@ export default function ChatScreen() {
     ]);
     scrollToBottom();
 
-    mutation.mutate(trimmed, {
+    mutation.mutate({ message: trimmed }, {
       onSuccess: () => {
         scrollToBottom();
       },
     });
+  };
+
+  const handleConfirm = () => {
+    if (!pendingConfirmation || mutation.isPending) {
+      return;
+    }
+
+    setApiError(null);
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: generateMessageId(),
+        role: 'user',
+        content: pendingConfirmation.message,
+      },
+    ]);
+    scrollToBottom();
+
+    mutation.mutate(
+      {
+        message: pendingConfirmation.message,
+        confirmationToolKey: pendingConfirmation.key,
+      },
+      {
+        onSuccess: () => {
+          scrollToBottom();
+        },
+      },
+    );
+  };
+
+  const handleCancel = () => {
+    if (!pendingConfirmation) {
+      return;
+    }
+
+    setCancelledMessage('Action cancelled.');
+    setPendingConfirmation(null);
+    scrollToBottom();
   };
 
   return (
@@ -137,7 +247,7 @@ export default function ChatScreen() {
           keyboardShouldPersistTaps="handled"
           onContentSizeChange={() => scrollToBottom()}
         >
-          {messages.length === 0 && (
+          {messages.length === 0 && !pendingConfirmation && (
             <View style={styles.emptyState}>
               <Typography variant="body" color={colors.textSecondary} align="center">
                 Ask me anything about your finances, obligations, or budgeting.
@@ -148,6 +258,22 @@ export default function ChatScreen() {
           {messages.map((message) => (
             <MessageBubble key={message.id} message={message} />
           ))}
+
+          {cancelledMessage && (
+            <View style={styles.cancelledIndicator}>
+              <Typography variant="caption" color={colors.textSecondary}>
+                {cancelledMessage}
+              </Typography>
+            </View>
+          )}
+
+          {pendingConfirmation && (
+            <ConfirmationCard
+              onConfirm={handleConfirm}
+              onCancel={handleCancel}
+              isPending={mutation.isPending}
+            />
+          )}
 
           {mutation.isPending && (
             <View style={styles.typingIndicator}>
@@ -249,6 +375,35 @@ const styles = StyleSheet.create({
   },
   typingIndicator: {
     alignSelf: 'flex-start',
+    padding: spacing.xs,
+    marginBottom: spacing.sm,
+  },
+  confirmationCard: {
+    padding: spacing.md,
+    marginVertical: spacing.sm,
+    borderColor: colors.warning,
+    backgroundColor: colors.warningLight,
+  },
+  confirmationTitle: {
+    marginBottom: spacing.xs,
+    color: colors.warning,
+  },
+  confirmationDescription: {
+    marginBottom: spacing.md,
+    lineHeight: 20,
+  },
+  confirmationButtons: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  confirmButton: {
+    flex: 1,
+  },
+  cancelButton: {
+    flex: 1,
+  },
+  cancelledIndicator: {
+    alignSelf: 'center',
     padding: spacing.xs,
     marginBottom: spacing.sm,
   },
