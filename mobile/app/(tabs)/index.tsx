@@ -182,6 +182,13 @@ export default function DashboardScreen() {
           onPress={() => router.push('/affordability' as any)}
           style={styles.affordabilityButton}
         />
+
+        <Button
+          title="Ask Dabbarha Assistant"
+          variant="secondary"
+          onPress={() => router.push('/chat' as any)}
+          style={styles.chatButton}
+        />
       </ScrollView>
     </ScreenWrapper>
   );
@@ -229,6 +236,9 @@ const styles = StyleSheet.create({
     marginTop: spacing.lg,
   },
   affordabilityButton: {
+    marginTop: spacing.md,
+  },
+  chatButton: {
     marginTop: spacing.md,
   },
 });
