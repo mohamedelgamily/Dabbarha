@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, StyleSheet, ScrollView, RefreshControl } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { dashboardApi } from '@/api/dashboard';
 import { ApiErrorDetail } from '@/types/api';
@@ -53,6 +54,7 @@ function MetricCard({ label, value, icon, valueColor, variant = 'default' }: Met
 }
 
 export default function DashboardScreen() {
+  const router = useRouter();
   const { user } = useAuthStore();
   const currency = user?.currency || 'EGP';
 
@@ -166,6 +168,13 @@ export default function DashboardScreen() {
             </Typography>
           </Card>
         )}
+
+        <Button
+          title="View Forecast"
+          variant="secondary"
+          onPress={() => router.push('/forecast' as any)}
+          style={styles.forecastButton}
+        />
       </ScrollView>
     </ScreenWrapper>
   );
@@ -208,5 +217,8 @@ const styles = StyleSheet.create({
   },
   warningText: {
     lineHeight: 22,
+  },
+  forecastButton: {
+    marginTop: spacing.lg,
   },
 });
