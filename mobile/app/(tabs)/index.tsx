@@ -175,6 +175,13 @@ export default function DashboardScreen() {
           onPress={() => router.push('/forecast' as any)}
           style={styles.forecastButton}
         />
+
+        <Button
+          title="Affordability Check"
+          variant="secondary"
+          onPress={() => router.push('/affordability' as any)}
+          style={styles.affordabilityButton}
+        />
       </ScrollView>
     </ScreenWrapper>
   );
@@ -220,5 +227,8 @@ const styles = StyleSheet.create({
   },
   forecastButton: {
     marginTop: spacing.lg,
+  },
+  affordabilityButton: {
+    marginTop: spacing.md,
   },
 });
