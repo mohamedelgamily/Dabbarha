@@ -29,7 +29,7 @@ function RootNavigationLayout() {
   }, [isAuthenticated, isInitialized, segments, router]);
 
   if (!isInitialized) {
-    return <LoadingIndicator message="Loading Dabbarha..." />;
+    return <LoadingIndicator message="Loading Dabbarha..." color={colors.primary} />;
   }
 
   return (

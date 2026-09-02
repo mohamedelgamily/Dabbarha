@@ -11,6 +11,7 @@ import { Button } from '@/components/common/Button';
 import { Input } from '@/components/common/Input';
 import { Card } from '@/components/common/Card';
 import { ErrorBanner } from '@/components/common/ErrorBanner';
+import { Logo } from '@/components/common/Logo';
 import { colors, spacing } from '@/constants/theme';
 
 export default function LoginScreen() {
@@ -46,19 +47,17 @@ export default function LoginScreen() {
 
   return (
     <ScreenWrapper scrollable>
-      <View style={styles.header}>
-        <Typography variant="hero" color={colors.primary} align="center">
-          دبّرها | Dabbarha
-        </Typography>
-        <Typography
-          variant="body"
-          color={colors.textSecondary}
-          align="center"
-          style={styles.subtitle}
-        >
-          Financial Planning & Installment Tracking
-        </Typography>
+      <View style={styles.brandRow}>
+        <Logo variant="full" tone="dark" />
       </View>
+      <Typography
+        variant="body"
+        color={colors.textSecondary}
+        align="center"
+        style={styles.subtitle}
+      >
+        Financial Planning & Installment Tracking
+      </Typography>
 
       <Card style={styles.formCard}>
         <Typography variant="h2" style={styles.formTitle}>
@@ -130,11 +129,13 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  header: {
-    marginVertical: spacing.xl,
+  brandRow: {
+    marginTop: spacing.xl,
+    marginBottom: spacing.xs,
+    alignItems: 'center',
   },
   subtitle: {
-    marginTop: spacing.xs,
+    marginBottom: spacing.lg,
   },
   formCard: {
     marginTop: spacing.xs,

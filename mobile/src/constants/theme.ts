@@ -1,37 +1,33 @@
 export const colors = {
-  // Primary brand palette (Dabbarha Emerald / Teal)
-  primary: '#0D9488',
-  primaryDark: '#0F766E',
-  primaryLight: '#2DD4BF',
-  primaryMuted: '#CCFBF1',
+  // Dabbarha brand palette
+  primary: '#02262D',
+  primaryDark: '#010D10',
+  primaryMuted: '#DCE5E4',
 
-  // Secondary / Accent
-  secondary: '#3B82F6',
-  secondaryDark: '#1D4ED8',
-  secondaryLight: '#93C5FD',
+  // Secondary / supporting
+  secondary: '#71878A',
 
   // Neutral / Backgrounds
-  background: '#F8FAFC',
+  background: '#FFFFFF',
   surface: '#FFFFFF',
-  surfaceAlt: '#F1F5F9',
-  card: '#FFFFFF',
+  surfaceAlt: '#DCE5E4',
 
   // Text
-  textPrimary: '#0F172A',
-  textSecondary: '#64748B',
-  textMuted: '#94A3B8',
+  textPrimary: '#010D10',
+  textSecondary: '#71878A',
+  textMuted: '#9AA7A9',
   textInverse: '#FFFFFF',
 
   // Borders & Dividers
-  border: '#E2E8F0',
-  borderDark: '#CBD5E1',
+  border: '#E4E7E7',
+  borderDark: '#C9D0D0',
 
-  // Feedback states
+  // Feedback states (semantically distinct from brand)
   success: '#10B981',
   successLight: '#D1FAE5',
-  warning: '#F59E0B',
+  warning: '#D97706',
   warningLight: '#FEF3C7',
-  error: '#EF4444',
+  error: '#DC2626',
   errorLight: '#FEE2E2',
   info: '#0EA5E9',
   infoLight: '#E0F2FE',
@@ -78,33 +74,42 @@ export const borderRadius = {
   none: 0,
   sm: 6,
   md: 10,
-  lg: 16,
-  xl: 24,
+  lg: 14,
+  xl: 20,
   full: 9999,
+} as const;
+
+export const sizes = {
+  inputHeight: 48,
+  buttonHeight: 52,
+  buttonHeightSm: 40,
+  buttonHeightLg: 56,
+  touchTarget: 44,
+  tabBarHeight: 64,
+  iconSm: 16,
+  iconMd: 20,
+  iconLg: 24,
+  logoSymbolSm: 28,
+  logoSymbolMd: 40,
+  logoSymbolLg: 64,
+  logoFullWidth: 180,
 } as const;
 
 export const shadows = {
   none: {},
   sm: {
-    shadowColor: '#0F172A',
+    shadowColor: '#010D10',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.04,
     shadowRadius: 2,
     elevation: 1,
   },
   md: {
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  lg: {
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    elevation: 6,
+    shadowColor: '#010D10',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
   },
 } as const;
 
@@ -113,6 +118,7 @@ export const theme = {
   spacing,
   typography,
   borderRadius,
+  sizes,
   shadows,
 };
 
