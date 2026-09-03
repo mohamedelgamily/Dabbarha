@@ -24,7 +24,10 @@ import { Typography } from '@/components/common/Typography';
 import { Input } from '@/components/common/Input';
 import { Button } from '@/components/common/Button';
 import { ErrorBanner } from '@/components/common/ErrorBanner';
+import { Icon } from '@/components/common/Icon';
+import { Segmented, type SegmentedOption } from '@/components/common/Segmented';
 import { colors, spacing, borderRadius } from '@/constants/theme';
+import { getTodayDateString } from '@/utils/format';
 
 interface ObligationFormModalProps {
   visible: boolean;
@@ -33,19 +36,23 @@ interface ObligationFormModalProps {
   onSuccess?: () => void;
 }
 
-const statusOptions: ObligationStatus[] = [
-  'active',
-  'completed',
-  'late',
-  'defaulted',
+const statusOptions: SegmentedOption<ObligationStatus>[] = [
+  { value: 'active', label: 'Active' },
+  { value: 'completed', label: 'Completed' },
+  { value: 'late', label: 'Late' },
+  { value: 'defaulted', label: 'Defaulted' },
 ];
 
-const getTodayDateString = () => {
-  const d = new Date();
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+const defaultValues: ObligationFormData = {
+  provider: '',
+  item_name: '',
+  category: '',
+  total_amount: '',
+  monthly_installment_amount: '',
+  start_date: getTodayDateString(),
+  term_months: '12',
+  due_day_of_month: '1',
+  status: 'active',
 };
 
 export function ObligationFormModal({
@@ -66,17 +73,7 @@ export function ObligationFormModal({
     formState: { errors },
   } = useForm<ObligationFormData>({
     resolver: zodResolver(obligationSchema),
-    defaultValues: {
-      provider: '',
-      item_name: '',
-      category: '',
-      total_amount: '',
-      monthly_installment_amount: '',
-      start_date: getTodayDateString(),
-      term_months: '12',
-      due_day_of_month: '1',
-      status: 'active',
-    },
+    defaultValues,
   });
 
   useEffect(() => {
@@ -95,17 +92,7 @@ export function ObligationFormModal({
           status: initialData.status as ObligationStatus,
         });
       } else {
-        reset({
-          provider: '',
-          item_name: '',
-          category: '',
-          total_amount: '',
-          monthly_installment_amount: '',
-          start_date: getTodayDateString(),
-          term_months: '12',
-          due_day_of_month: '1',
-          status: 'active',
-        });
+        reset({ ...defaultValues, start_date: getTodayDateString() });
       }
     }
   }, [visible, initialData, reset]);
@@ -181,10 +168,10 @@ export function ObligationFormModal({
               onPress={onClose}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               style={styles.closeButton}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
             >
-              <Typography variant="bodyBold" color={colors.textSecondary}>
-                ✕
-              </Typography>
+              <Icon name="x" size={20} tone="secondary" />
             </TouchableOpacity>
           </View>
 
@@ -366,31 +353,11 @@ export function ObligationFormModal({
                 control={control}
                 name="status"
                 render={({ field: { onChange, value } }) => (
-                  <View style={styles.statusPills}>
-                    {statusOptions.map((opt) => {
-                      const isSelected = value === opt;
-                      return (
-                        <TouchableOpacity
-                          key={opt}
-                          onPress={() => onChange(opt)}
-                          style={[
-                            styles.statusPill,
-                            isSelected && styles.statusPillSelected,
-                          ]}
-                        >
-                          <Typography
-                            variant="caption"
-                            style={[
-                              styles.statusPillText,
-                              isSelected && styles.statusPillTextSelected,
-                            ]}
-                          >
-                            {opt}
-                          </Typography>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
+                  <Segmented
+                    value={value}
+                    options={statusOptions}
+                    onChange={onChange}
+                  />
                 )}
               />
             </View>
@@ -447,32 +414,6 @@ const styles = StyleSheet.create({
   },
   statusLabel: {
     marginBottom: spacing.xs,
-  },
-  statusPills: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    flexWrap: 'wrap',
-  },
-  statusPill: {
-    paddingVertical: spacing.xs + 2,
-    paddingHorizontal: spacing.md,
-    borderRadius: borderRadius.full,
-    backgroundColor: colors.surfaceAlt,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  statusPillSelected: {
-    backgroundColor: colors.primaryMuted,
-    borderColor: colors.primary,
-  },
-  statusPillText: {
-    color: colors.textSecondary,
-    textTransform: 'capitalize',
-    fontWeight: '500',
-  },
-  statusPillTextSelected: {
-    color: colors.primaryDark,
-    fontWeight: '700',
   },
   submitButton: {
     marginTop: spacing.sm,

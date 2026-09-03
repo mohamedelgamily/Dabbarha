@@ -1,12 +1,24 @@
 import React from 'react';
 import { StyleSheet, StyleProp, ViewStyle } from 'react-native';
 
-import SymbolDark from '../../../assets/branding/dabbarha-symbol.svg';
-import SymbolLight from '../../../assets/branding/dabbarha-symbol-light.svg';
-import LogoDark from '../../../assets/branding/dabbarha-logo.svg';
-import LogoLight from '../../../assets/branding/dabbarha-logo-light.svg';
+import SymbolDarkRaw from '../../../assets/branding/dabbarha-symbol.svg';
+import SymbolLightRaw from '../../../assets/branding/dabbarha-symbol-light.svg';
+import LogoDarkRaw from '../../../assets/branding/dabbarha-logo.svg';
+import LogoLightRaw from '../../../assets/branding/dabbarha-logo-light.svg';
 
 import { sizes } from '@/constants/theme';
+
+type SvgComponent = React.ComponentType<{
+  width?: number | string;
+  height?: number | string;
+  fill?: string;
+  style?: StyleProp<ViewStyle>;
+}>;
+
+const SymbolDark = (SymbolDarkRaw as unknown as { default?: SvgComponent }).default ?? (SymbolDarkRaw as unknown as SvgComponent);
+const SymbolLight = (SymbolLightRaw as unknown as { default?: SvgComponent }).default ?? (SymbolLightRaw as unknown as SvgComponent);
+const LogoDark = (LogoDarkRaw as unknown as { default?: SvgComponent }).default ?? (LogoDarkRaw as unknown as SvgComponent);
+const LogoLight = (LogoLightRaw as unknown as { default?: SvgComponent }).default ?? (LogoLightRaw as unknown as SvgComponent);
 
 export type LogoVariant = 'full' | 'symbol';
 export type LogoTone = 'dark' | 'light';
@@ -19,10 +31,7 @@ interface LogoProps {
   style?: StyleProp<ViewStyle>;
 }
 
-function pickComponent(
-  variant: LogoVariant,
-  tone: LogoTone,
-): React.ComponentType<{ width?: number | string; height?: number | string; fill?: string; style?: StyleProp<ViewStyle> }> {
+function pickComponent(variant: LogoVariant, tone: LogoTone): SvgComponent {
   if (variant === 'symbol') {
     return tone === 'light' ? SymbolLight : SymbolDark;
   }

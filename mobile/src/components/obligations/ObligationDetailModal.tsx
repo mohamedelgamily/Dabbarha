@@ -12,12 +12,16 @@ import { Typography } from '@/components/common/Typography';
 import { Card } from '@/components/common/Card';
 import { Badge, BadgeVariant } from '@/components/common/Badge';
 import { Button } from '@/components/common/Button';
-import { colors, spacing } from '@/constants/theme';
+import { Icon, IconName } from '@/components/common/Icon';
+import { colors, spacing, borderRadius } from '@/constants/theme';
+import { formatCurrency, formatDate } from '@/utils/format';
+
 
 interface ObligationDetailModalProps {
   visible: boolean;
   onClose: () => void;
   obligation: ObligationResponse | null;
+  currency: string;
   onEdit: (obligation: ObligationResponse) => void;
   onDelete: (obligation: ObligationResponse) => void;
   isDeleting?: boolean;
@@ -30,10 +34,23 @@ const statusBadgeVariant: Record<ObligationStatus, BadgeVariant> = {
   defaulted: 'error',
 };
 
+const CATEGORY_ICON: Record<string, IconName> = {
+  Electronics: 'credit-card',
+  Vehicle: 'trending-up',
+  Housing: 'home',
+  Education: 'list-checks',
+  default: 'file-text',
+};
+
+function pickCategoryIcon(category: string): IconName {
+  return CATEGORY_ICON[category] ?? CATEGORY_ICON.default;
+}
+
 export function ObligationDetailModal({
   visible,
   onClose,
   obligation,
+  currency,
   onEdit,
   onDelete,
   isDeleting = false,
@@ -42,26 +59,6 @@ export function ObligationDetailModal({
 
   const badgeVariant =
     statusBadgeVariant[obligation.status as ObligationStatus] || 'neutral';
-
-  const formatCurrency = (amount: string | number) => {
-    const num = Number(amount);
-    if (isNaN(num)) return `${amount} EGP`;
-    return `${num.toLocaleString()} EGP`;
-  };
-
-  const formatDate = (isoString?: string) => {
-    if (!isoString) return 'N/A';
-    try {
-      const d = new Date(isoString);
-      return d.toLocaleDateString(undefined, {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-      });
-    } catch {
-      return isoString;
-    }
-  };
 
   return (
     <Modal
@@ -77,10 +74,10 @@ export function ObligationDetailModal({
             onPress={onClose}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             style={styles.closeButton}
+            accessibilityRole="button"
+            accessibilityLabel="Close"
           >
-            <Typography variant="bodyBold" color={colors.textSecondary}>
-              ✕
-            </Typography>
+            <Icon name="x" size={20} tone="secondary" />
           </TouchableOpacity>
         </View>
 
@@ -91,12 +88,15 @@ export function ObligationDetailModal({
         >
           <Card style={styles.summaryCard}>
             <View style={styles.summaryTop}>
+              <View style={styles.summaryIconWrap}>
+                <Icon name={pickCategoryIcon(obligation.category)} size={22} tone="primary" />
+              </View>
               <View style={styles.summaryTitleCol}>
                 <Typography variant="h1" style={styles.itemName}>
                   {obligation.item_name}
                 </Typography>
                 <Typography variant="body" color={colors.textSecondary}>
-                  {obligation.provider} • {obligation.category}
+                  {obligation.provider} · {obligation.category}
                 </Typography>
               </View>
               <Badge label={obligation.status} variant={badgeVariant} />
@@ -110,7 +110,7 @@ export function ObligationDetailModal({
                   Monthly Installment
                 </Typography>
                 <Typography variant="h2" color={colors.primary} style={styles.amountText}>
-                  {formatCurrency(obligation.monthly_installment_amount)}
+                  {formatCurrency(obligation.monthly_installment_amount, currency)}
                 </Typography>
               </View>
 
@@ -119,7 +119,7 @@ export function ObligationDetailModal({
                   Total Amount
                 </Typography>
                 <Typography variant="h2" style={styles.amountText}>
-                  {formatCurrency(obligation.total_amount)}
+                  {formatCurrency(obligation.total_amount, currency)}
                 </Typography>
               </View>
             </View>
@@ -153,7 +153,7 @@ export function ObligationDetailModal({
                 Payment Due Day
               </Typography>
               <Typography variant="bodyBold">
-                {obligation.due_day_of_month}th of every month
+                {obligation.due_day_of_month} of every month
               </Typography>
             </View>
 
@@ -168,13 +168,19 @@ export function ObligationDetailModal({
 
             <View style={styles.divider} />
 
-            <View style={styles.infoRow}>
-              <Typography variant="caption" color={colors.textMuted}>
-                Created: {formatDate(obligation.created_at)}
-              </Typography>
-              <Typography variant="caption" color={colors.textMuted}>
-                Updated: {formatDate(obligation.updated_at)}
-              </Typography>
+            <View style={styles.metaRow}>
+              <View style={styles.metaItem}>
+                <Icon name="clock" size={14} tone="muted" />
+                <Typography variant="caption" color={colors.textMuted} style={styles.metaText}>
+                  Created {formatDate(obligation.created_at)}
+                </Typography>
+              </View>
+              <View style={styles.metaItem}>
+                <Icon name="refresh" size={14} tone="muted" />
+                <Typography variant="caption" color={colors.textMuted} style={styles.metaText}>
+                  Updated {formatDate(obligation.updated_at)}
+                </Typography>
+              </View>
             </View>
           </Card>
 
@@ -229,18 +235,27 @@ const styles = StyleSheet.create({
   },
   summaryCard: {
     marginBottom: spacing.md,
+    borderRadius: borderRadius.xl,
   },
   summaryTop: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
+  },
+  summaryIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.primaryMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.md,
   },
   summaryTitleCol: {
     flex: 1,
     marginRight: spacing.sm,
   },
   itemName: {
-    marginBottom: spacing.xs / 2,
+    marginBottom: 2,
   },
   divider: {
     height: 1,
@@ -256,10 +271,11 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   amountText: {
-    marginTop: spacing.xs / 2,
+    marginTop: 2,
   },
   infoCard: {
     marginBottom: spacing.lg,
+    borderRadius: borderRadius.xl,
   },
   sectionTitle: {
     marginBottom: spacing.md,
@@ -267,10 +283,24 @@ const styles = StyleSheet.create({
   infoRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
     paddingVertical: spacing.xs + 2,
   },
   sourceText: {
     textTransform: 'capitalize',
+  },
+  metaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  metaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  metaText: {
+    marginLeft: spacing.xs,
   },
   actions: {
     gap: spacing.md,

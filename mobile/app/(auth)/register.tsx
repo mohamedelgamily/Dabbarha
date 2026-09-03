@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { View, StyleSheet } from 'react-native';
-import { Link } from 'expo-router';
+import { Link, router } from 'expo-router';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { registerSchema, RegisterFormData } from '@/schemas/auth';
@@ -15,7 +15,7 @@ import { Logo } from '@/components/common/Logo';
 import { colors, spacing } from '@/constants/theme';
 
 export default function RegisterScreen() {
-  const { register, login, isLoading, error, clearError } = useAuthStore();
+  const { register, isLoading, error, clearError } = useAuthStore();
 
   const {
     control,
@@ -57,12 +57,7 @@ export default function RegisterScreen() {
         currency: (data.currency || 'EGP').trim().toUpperCase(),
       });
 
-      // Automatically sign in upon successful registration
-      await login({
-        email: data.email.trim().toLowerCase(),
-        password: data.password,
-      });
-      // Navigation is automatically handled by route protection in app/_layout.tsx
+      router.replace('/(auth)/login');
     } catch {
       // Error message is captured in Zustand authStore.error
     }

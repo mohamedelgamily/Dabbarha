@@ -28,11 +28,11 @@ function formatMonthLabel(monthStr: string): string {
   return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
 }
 
-function getCurrentMonth(): string {
+function getCurrentMonthStartDate(): string {
   const now = new Date();
   const year = now.getFullYear();
   const month = String(now.getMonth() + 1).padStart(2, '0');
-  return `${year}-${month}`;
+  return `${year}-${month}-01`;
 }
 
 interface ForecastMonthCardProps {
@@ -115,7 +115,7 @@ export default function ForecastScreen() {
   const { user } = useAuthStore();
   const currency = user?.currency || 'EGP';
 
-  const startMonth = getCurrentMonth();
+  const startMonth = getCurrentMonthStartDate();
   const months = 6;
 
   const {

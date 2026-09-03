@@ -2,6 +2,7 @@ import React from 'react';
 import { View, StyleSheet, TouchableOpacity, StyleProp, ViewStyle } from 'react-native';
 import { colors, spacing, borderRadius } from '@/constants/theme';
 import { Typography } from './Typography';
+import { Icon } from './Icon';
 
 interface ErrorBannerProps {
   message: string | null;
@@ -15,9 +16,9 @@ export function ErrorBanner({ message, onDismiss, style }: ErrorBannerProps) {
   return (
     <View style={[styles.container, style]}>
       <View style={styles.content}>
-        <Typography variant="bodyBold" color={colors.error} style={styles.icon}>
-          ⚠️
-        </Typography>
+        <View style={styles.iconWrap}>
+          <Icon name="alert-triangle" size={18} tone="error" />
+        </View>
         <Typography variant="error" color={colors.error} style={styles.text}>
           {message}
         </Typography>
@@ -27,10 +28,10 @@ export function ErrorBanner({ message, onDismiss, style }: ErrorBannerProps) {
           onPress={onDismiss}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           style={styles.dismissButton}
+          accessibilityRole="button"
+          accessibilityLabel="Dismiss"
         >
-          <Typography variant="caption" color={colors.error} style={styles.dismissText}>
-            ✕
-          </Typography>
+          <Icon name="x" size={16} tone="error" />
         </TouchableOpacity>
       ) : null}
     </View>
@@ -55,9 +56,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  icon: {
+  iconWrap: {
     marginRight: spacing.sm,
-    fontSize: 14,
   },
   text: {
     flex: 1,
@@ -67,9 +67,5 @@ const styles = StyleSheet.create({
   dismissButton: {
     marginLeft: spacing.sm,
     padding: spacing.xs,
-  },
-  dismissText: {
-    fontWeight: '700',
-    fontSize: 14,
   },
 });

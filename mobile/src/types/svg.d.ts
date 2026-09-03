@@ -1,11 +1,11 @@
 declare module '*.svg' {
   import { ComponentType } from 'react';
   import { StyleProp, ViewStyle } from 'react-native';
-  const SvgComponent: ComponentType<{
+  const svg: ComponentType<{
     width?: number | string;
     height?: number | string;
     fill?: string;
     style?: StyleProp<ViewStyle>;
-  }>;
-  export default SvgComponent;
+  }> | { default: ComponentType<{ width?: number | string; height?: number | string; fill?: string; style?: StyleProp<ViewStyle> }> };
+  export default svg;
 }

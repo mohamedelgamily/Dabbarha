@@ -10,6 +10,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { obligationsApi } from '@/api/obligations';
 import { ObligationResponse } from '@/types/obligation';
+import { useAuthStore } from '@/store/authStore';
 import { ScreenWrapper } from '@/components/common/ScreenWrapper';
 import { Typography } from '@/components/common/Typography';
 import { Button } from '@/components/common/Button';
@@ -23,6 +24,8 @@ import { colors, spacing } from '@/constants/theme';
 
 export default function ObligationsScreen() {
   const queryClient = useQueryClient();
+  const { user } = useAuthStore();
+  const currency = user?.currency || 'EGP';
 
   const [selectedObligation, setSelectedObligation] =
     useState<ObligationResponse | null>(null);
@@ -136,6 +139,7 @@ export default function ObligationsScreen() {
         renderItem={({ item }) => (
           <ObligationCard
             obligation={item}
+            currency={currency}
             onPress={(ob) => setSelectedObligation(ob)}
           />
         )}
@@ -187,6 +191,7 @@ export default function ObligationsScreen() {
       <ObligationDetailModal
         visible={!!selectedObligation}
         obligation={selectedObligation}
+        currency={currency}
         onClose={() => setSelectedObligation(null)}
         onEdit={handleOpenEdit}
         onDelete={handleDeleteConfirm}
