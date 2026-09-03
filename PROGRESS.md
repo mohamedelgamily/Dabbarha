@@ -4,7 +4,7 @@
 
 Project: Dabbarha / دبّرها
 
-Current phase: Phase 1h.7 — End-to-End Chat Orchestration & Hardening
+Current phase: Phase 1i — Optional Financial Profile
 
 Status: completed after verification
 
@@ -682,8 +682,36 @@ Testing:
 Commit:
 - Phase 1h.7 completed in commit `5cda880`.
 
+### Phase 1i — Optional Financial Profile
+
+Built:
+- Registration now requires only name, email, and password. Monthly income, fixed expenses, and currency are no longer collected during registration.
+- New users retain the existing defaults: `monthly_income = 0.00`, `fixed_expenses = 0.00`, `currency = EGP`.
+- Added authenticated `PATCH /auth/me` for optional financial-profile updates.
+- `PATCH /auth/me` supports partial updates for `monthly_income`, `fixed_expenses`, and `currency`.
+- Identity/immutable fields (`id`, `email`, `name`, `password`, `password_hash`) cannot be changed through this endpoint.
+- Creating obligations does not require financial information.
+- Dashboard, Forecast, Affordability, and Chat behavior/calculation architecture were preserved.
+- Updated affected tests to configure financial values through `PATCH /auth/me`.
+- Added validation/security tests for the new endpoint.
+
+Security:
+- `PATCH /auth/me` is protected by `get_current_user` dependency.
+- Only financial profile fields (`monthly_income`, `fixed_expenses`, `currency`) are updatable; identity fields are excluded.
+- Partial updates are supported; omitted fields retain their current values.
+- No database schema changes or Alembic migrations required.
+
+Testing:
+- Updated affected tests to configure financial values through `PATCH /auth/me`.
+- Added validation/security tests for the new endpoint.
+- Ran `pytest -q`: 365 passed, 1 skipped, 1 warning.
+- Ran `git diff --check`: passed cleanly.
+
+Commit:
+- Phase 1i completed in commit `[pending]`.
+
 Next Planned Step:
-Phase 1i — Frontend Integration / Production Readiness
+Phase 1j — Frontend Integration / Production Readiness
 
 ## What Was Intentionally NOT Built Yet
 
@@ -695,7 +723,7 @@ Phase 1i — Frontend Integration / Production Readiness
 
 ## Next Planned Step
 
-Phase 1i — Frontend Integration / Production Readiness
+Phase 1j — Frontend Integration / Production Readiness
 
 ## Design Decision
 
@@ -821,7 +849,18 @@ Conversation memory provides context for the LLM but is never authoritative fina
 - Verified `pytest -q`: 342 passed, 1 skipped, 1 warning.
 - Verified `git diff --check`: passed for project changes.
 - Verified `git status --short`: clean working tree with expected modifications.
+- Verified Phase 1i: registration requires only name, email, and password; monthly income, fixed expenses, and currency are no longer collected during registration.
+- Verified new users retain defaults: `monthly_income = 0.00`, `fixed_expenses = 0.00`, `currency = EGP`.
+- Verified `PATCH /auth/me` is protected, supports partial updates for `monthly_income`, `fixed_expenses`, and `currency`, and rejects identity/immutable field changes.
+- Verified creating obligations does not require financial information.
+- Verified Dashboard, Forecast, Affordability, and Chat behavior/calculation architecture were preserved.
+- Verified affected tests configure financial values through `PATCH /auth/me`.
+- Verified validation/security tests for the new endpoint.
+- Verified `pytest -q`: 365 passed, 1 skipped, 1 warning.
+- Verified `git diff --check`: passed cleanly.
 
 ## Future Updates
 
 Use this section to record progress in later phases.
+
+- Future consideration: the current database uses `0.00` defaults for `monthly_income` and `fixed_expenses`, so the backend cannot distinguish between "financial profile not configured" and "user explicitly entered zero income." A future schema change (e.g., nullable fields or a separate profile-configuration flag) may be needed to support this distinction.
