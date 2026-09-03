@@ -67,8 +67,6 @@ def register_and_login(
             "name": name,
             "email": email,
             "password": "Password123!",
-            "monthly_income": monthly_income,
-            "fixed_expenses": fixed_expenses,
         },
     )
     assert register_response.status_code == 201
@@ -78,8 +76,23 @@ def register_and_login(
         json={"email": email, "password": "Password123!"},
     )
     assert login_response.status_code == 200
+    token = login_response.json()["access_token"]
 
-    return register_response.json()["id"], login_response.json()["access_token"]
+    patch_payload: dict[str, str] = {}
+    if monthly_income is not None:
+        patch_payload["monthly_income"] = monthly_income
+    if fixed_expenses is not None:
+        patch_payload["fixed_expenses"] = fixed_expenses
+
+    if patch_payload:
+        patch_response = client.patch(
+            "/auth/me",
+            headers={"Authorization": f"Bearer {token}"},
+            json=patch_payload,
+        )
+        assert patch_response.status_code == 200
+
+    return register_response.json()["id"], token
 
 
 def create_obligation(

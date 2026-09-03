@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user, get_db
 from app.core.security import create_access_token, hash_password, verify_password
 from app.models.user import User
-from app.schemas.auth import Token, UserCreate, UserLogin, UserResponse
+from app.schemas.auth import Token, UserCreate, UserLogin, UserResponse, UserUpdate
 
 router = APIRouter()
 
@@ -35,9 +35,6 @@ def register(
         name=user_in.name.strip(),
         email=normalized_email,
         password_hash=hash_password(user_in.password),
-        monthly_income=user_in.monthly_income,
-        fixed_expenses=user_in.fixed_expenses,
-        currency=user_in.currency.strip().upper(),
     )
 
     try:
@@ -92,4 +89,33 @@ def login(
 def read_current_user(
     current_user: User = Depends(get_current_user),
 ) -> User:
+    return current_user
+
+
+@router.patch(
+    "/me",
+    response_model=UserResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Update current user financial profile",
+)
+def update_current_user_profile(
+    profile_in: UserUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> User:
+    update_data = profile_in.model_dump(exclude_unset=True)
+
+    if "monthly_income" in update_data:
+        current_user.monthly_income = update_data["monthly_income"]
+
+    if "fixed_expenses" in update_data:
+        current_user.fixed_expenses = update_data["fixed_expenses"]
+
+    if "currency" in update_data:
+        current_user.currency = update_data["currency"].strip().upper()
+
+    db.add(current_user)
+    db.commit()
+    db.refresh(current_user)
+
     return current_user
