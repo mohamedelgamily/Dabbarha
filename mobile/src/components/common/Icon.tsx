@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   ArrowDown,
   ArrowLeft,
+  ArrowUp,
   Bell,
   Calendar,
   Check,
@@ -44,6 +45,7 @@ export type IconName =
   | 'alert-triangle'
   | 'arrow-down'
   | 'arrow-left'
+  | 'arrow-up'
   | 'bell'
   | 'calendar'
   | 'check'
@@ -82,6 +84,7 @@ const ICONS: Record<IconName, LucideIcon> = {
   'alert-triangle': AlertTriangle,
   'arrow-down': ArrowDown,
   'arrow-left': ArrowLeft,
+  'arrow-up': ArrowUp,
   bell: Bell,
   calendar: Calendar,
   check: Check,

@@ -98,6 +98,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   input: {
+    fontFamily: typography.fontFamily,
     flex: 1,
     paddingVertical: spacing.sm + 4,
     fontSize: typography.sizes.md,

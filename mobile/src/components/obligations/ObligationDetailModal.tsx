@@ -9,13 +9,11 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ObligationResponse, ObligationStatus } from '@/types/obligation';
 import { Typography } from '@/components/common/Typography';
-import { Card } from '@/components/common/Card';
 import { Badge, BadgeVariant } from '@/components/common/Badge';
 import { Button } from '@/components/common/Button';
 import { Icon, IconName } from '@/components/common/Icon';
 import { colors, spacing, borderRadius } from '@/constants/theme';
 import { formatCurrency, formatDate } from '@/utils/format';
-
 
 interface ObligationDetailModalProps {
   visible: boolean;
@@ -39,6 +37,7 @@ const CATEGORY_ICON: Record<string, IconName> = {
   Vehicle: 'trending-up',
   Housing: 'home',
   Education: 'list-checks',
+  Personal: 'user',
   default: 'file-text',
 };
 
@@ -69,7 +68,7 @@ export function ObligationDetailModal({
     >
       <SafeAreaView style={styles.modalContainer}>
         <View style={styles.header}>
-          <Typography variant="h2">Obligation Details</Typography>
+          <Typography style={styles.headerTitle}>Obligation Details</Typography>
           <TouchableOpacity
             onPress={onClose}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -77,7 +76,7 @@ export function ObligationDetailModal({
             accessibilityRole="button"
             accessibilityLabel="Close"
           >
-            <Icon name="x" size={20} tone="secondary" />
+            <Icon name="x" size={20} color={colors.textSecondary} />
           </TouchableOpacity>
         </View>
 
@@ -86,104 +85,95 @@ export function ObligationDetailModal({
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          <Card style={styles.summaryCard}>
-            <View style={styles.summaryTop}>
-              <View style={styles.summaryIconWrap}>
-                <Icon name={pickCategoryIcon(obligation.category)} size={22} tone="primary" />
+          {/* Main Financial Hero Box */}
+          <View style={styles.heroBox}>
+            <View style={styles.heroTop}>
+              <View style={styles.heroIconBadge}>
+                <Icon
+                  name={pickCategoryIcon(obligation.category)}
+                  size={22}
+                  color="#2DD4BF"
+                />
               </View>
-              <View style={styles.summaryTitleCol}>
-                <Typography variant="h1" style={styles.itemName}>
+              <View style={styles.heroTitleCol}>
+                <Typography style={styles.heroItemName} numberOfLines={1}>
                   {obligation.item_name}
                 </Typography>
-                <Typography variant="body" color={colors.textSecondary}>
+                <Typography style={styles.heroProviderText}>
                   {obligation.provider} · {obligation.category}
                 </Typography>
               </View>
               <Badge label={obligation.status} variant={badgeVariant} />
             </View>
 
-            <View style={styles.divider} />
+            <View style={styles.heroDivider} />
 
-            <View style={styles.amountGrid}>
-              <View style={styles.amountBox}>
-                <Typography variant="caption" color={colors.textMuted}>
-                  Monthly Installment
+            <View style={styles.heroAmountsGrid}>
+              <View style={styles.amountCol}>
+                <Typography style={styles.heroAmountLabel}>
+                  MONTHLY INSTALLMENT
                 </Typography>
-                <Typography variant="h2" color={colors.primary} style={styles.amountText}>
+                <Typography style={styles.heroInstallmentAmount}>
                   {formatCurrency(obligation.monthly_installment_amount, currency)}
                 </Typography>
               </View>
 
-              <View style={styles.amountBox}>
-                <Typography variant="caption" color={colors.textMuted}>
-                  Total Amount
+              <View style={styles.amountColRight}>
+                <Typography style={styles.heroAmountLabel}>
+                  TOTAL COMMITMENT
                 </Typography>
-                <Typography variant="h2" style={styles.amountText}>
+                <Typography style={styles.heroTotalAmount}>
                   {formatCurrency(obligation.total_amount, currency)}
                 </Typography>
               </View>
             </View>
-          </Card>
+          </View>
 
-          <Card style={styles.infoCard}>
-            <Typography variant="h3" style={styles.sectionTitle}>
-              Schedule & Terms
+          {/* Schedule & Terms Details */}
+          <View style={styles.sectionContainer}>
+            <Typography style={styles.sectionHeading}>
+              Terms & Schedule
             </Typography>
 
-            <View style={styles.infoRow}>
-              <Typography variant="body" color={colors.textSecondary}>
-                Start Date
-              </Typography>
-              <Typography variant="bodyBold">
-                {obligation.start_date}
-              </Typography>
-            </View>
-
-            <View style={styles.infoRow}>
-              <Typography variant="body" color={colors.textSecondary}>
-                Term Duration
-              </Typography>
-              <Typography variant="bodyBold">
-                {obligation.term_months} Months
-              </Typography>
-            </View>
-
-            <View style={styles.infoRow}>
-              <Typography variant="body" color={colors.textSecondary}>
-                Payment Due Day
-              </Typography>
-              <Typography variant="bodyBold">
-                {obligation.due_day_of_month} of every month
-              </Typography>
-            </View>
-
-            <View style={styles.infoRow}>
-              <Typography variant="body" color={colors.textSecondary}>
-                Entry Source
-              </Typography>
-              <Typography variant="bodyBold" style={styles.sourceText}>
-                {obligation.source.replace('_', ' ')}
-              </Typography>
-            </View>
-
-            <View style={styles.divider} />
-
-            <View style={styles.metaRow}>
-              <View style={styles.metaItem}>
-                <Icon name="clock" size={14} tone="muted" />
-                <Typography variant="caption" color={colors.textMuted} style={styles.metaText}>
-                  Created {formatDate(obligation.created_at)}
+            <View style={styles.infoTable}>
+              <View style={styles.tableRow}>
+                <Typography style={styles.rowLabel}>Start Date</Typography>
+                <Typography style={styles.rowValue}>
+                  {obligation.start_date}
                 </Typography>
               </View>
-              <View style={styles.metaItem}>
-                <Icon name="refresh" size={14} tone="muted" />
-                <Typography variant="caption" color={colors.textMuted} style={styles.metaText}>
-                  Updated {formatDate(obligation.updated_at)}
+
+              <View style={styles.tableRow}>
+                <Typography style={styles.rowLabel}>Term Duration</Typography>
+                <Typography style={styles.rowValue}>
+                  {obligation.term_months} Months
+                </Typography>
+              </View>
+
+              <View style={styles.tableRow}>
+                <Typography style={styles.rowLabel}>Payment Due Day</Typography>
+                <Typography style={styles.rowValue}>
+                  {obligation.due_day_of_month}th of every month
+                </Typography>
+              </View>
+
+              <View style={styles.tableRow}>
+                <Typography style={styles.rowLabel}>Source</Typography>
+                <Typography style={[styles.rowValue, styles.capitalizeText]}>
+                  {obligation.source.replace('_', ' ')}
+                </Typography>
+              </View>
+
+              <View style={[styles.tableRow, styles.noBorderRow]}>
+                <Typography style={styles.rowLabel}>Created</Typography>
+                <Typography style={styles.rowValueMuted}>
+                  {formatDate(obligation.created_at)}
                 </Typography>
               </View>
             </View>
-          </Card>
+          </View>
 
+          {/* Actions */}
           <View style={styles.actions}>
             <Button
               title="Edit Obligation"
@@ -224,6 +214,11 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
     backgroundColor: colors.surface,
   },
+  headerTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
   closeButton: {
     padding: spacing.xs,
   },
@@ -233,74 +228,120 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: spacing.lg,
   },
-  summaryCard: {
-    marginBottom: spacing.md,
-    borderRadius: borderRadius.xl,
+  heroBox: {
+    backgroundColor: '#02262D',
+    borderRadius: 20,
+    padding: spacing.lg,
+    marginBottom: spacing.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
   },
-  summaryTop: {
+  heroTop: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  summaryIconWrap: {
+  heroIconBadge: {
     width: 44,
     height: 44,
-    borderRadius: 22,
-    backgroundColor: colors.primaryMuted,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: spacing.md,
   },
-  summaryTitleCol: {
+  heroTitleCol: {
     flex: 1,
     marginRight: spacing.sm,
   },
-  itemName: {
+  heroItemName: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#FFFFFF',
     marginBottom: 2,
   },
-  divider: {
+  heroProviderText: {
+    fontSize: 12,
+    color: '#94A3B8',
+  },
+  heroDivider: {
     height: 1,
-    backgroundColor: colors.border,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
     marginVertical: spacing.md,
   },
-  amountGrid: {
+  heroAmountsGrid: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    gap: spacing.md,
+    alignItems: 'flex-start',
   },
-  amountBox: {
+  amountCol: {
     flex: 1,
   },
-  amountText: {
-    marginTop: 2,
+  amountColRight: {
+    alignItems: 'flex-end',
   },
-  infoCard: {
-    marginBottom: spacing.lg,
-    borderRadius: borderRadius.xl,
+  heroAmountLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    color: '#94A3B8',
+    marginBottom: 4,
   },
-  sectionTitle: {
-    marginBottom: spacing.md,
+  heroInstallmentAmount: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#2DD4BF',
+    fontVariant: ['tabular-nums'],
   },
-  infoRow: {
+  heroTotalAmount: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#F1F5F9',
+    fontVariant: ['tabular-nums'],
+  },
+  sectionContainer: {
+    marginBottom: spacing.xl,
+  },
+  sectionHeading: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    letterSpacing: -0.1,
+    marginBottom: spacing.sm,
+  },
+  infoTable: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    paddingHorizontal: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  tableRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: spacing.xs + 2,
+    paddingVertical: spacing.md - 2,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
-  sourceText: {
+  noBorderRow: {
+    borderBottomWidth: 0,
+  },
+  rowLabel: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    fontWeight: '500',
+  },
+  rowValue: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  rowValueMuted: {
+    fontSize: 12,
+    color: colors.textMuted,
+  },
+  capitalizeText: {
     textTransform: 'capitalize',
-  },
-  metaRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-  },
-  metaItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  metaText: {
-    marginLeft: spacing.xs,
   },
   actions: {
     gap: spacing.md,

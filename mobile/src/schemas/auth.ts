@@ -27,23 +27,6 @@ export const registerSchema = z.object({
   password: z
     .string()
     .min(6, 'Password must be at least 6 characters'),
-  monthly_income: z
-    .string()
-    .optional()
-    .refine((val) => !val || (!isNaN(Number(val)) && Number(val) >= 0), {
-      message: 'Monthly income must be a non-negative number',
-    }),
-  fixed_expenses: z
-    .string()
-    .optional()
-    .refine((val) => !val || (!isNaN(Number(val)) && Number(val) >= 0), {
-      message: 'Fixed expenses must be a non-negative number',
-    }),
-  currency: z
-    .string()
-    .trim()
-    .min(1, 'Currency code is required')
-    .max(3, 'Currency code cannot exceed 3 characters'),
 });
 
 export type RegisterFormData = z.infer<typeof registerSchema>;

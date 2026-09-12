@@ -1,7 +1,6 @@
 import React from 'react';
 import { View, StyleSheet, TouchableOpacity } from 'react-native';
 import { ObligationResponse, ObligationStatus } from '@/types/obligation';
-import { Card } from '@/components/common/Card';
 import { Typography } from '@/components/common/Typography';
 import { Badge, BadgeVariant } from '@/components/common/Badge';
 import { Icon, IconName } from '@/components/common/Icon';
@@ -26,6 +25,7 @@ const CATEGORY_ICON: Record<string, IconName> = {
   Vehicle: 'trending-up',
   Housing: 'home',
   Education: 'list-checks',
+  Personal: 'user',
   default: 'file-text',
 };
 
@@ -39,121 +39,164 @@ export function ObligationCard({ obligation, currency, onPress }: ObligationCard
 
   return (
     <TouchableOpacity
-      activeOpacity={0.7}
+      activeOpacity={0.75}
       onPress={() => onPress(obligation)}
-      style={styles.touchable}
+      style={styles.cardContainer}
     >
-      <Card style={styles.card}>
-        <View style={styles.headerRow}>
-          <View style={styles.iconWrap}>
-            <Icon name={pickCategoryIcon(obligation.category)} size={20} tone="primary" />
-          </View>
-          <View style={styles.titleContainer}>
-            <Typography variant="h3" style={styles.itemName}>
-              {obligation.item_name}
-            </Typography>
+      <View style={styles.topRow}>
+        <View style={styles.iconBadge}>
+          <Icon
+            name={pickCategoryIcon(obligation.category)}
+            size={18}
+            color={colors.primary}
+          />
+        </View>
+
+        <View style={styles.titleCol}>
+          <Typography style={styles.itemName} numberOfLines={1}>
+            {obligation.item_name}
+          </Typography>
+          <Typography variant="caption" color={colors.textSecondary} numberOfLines={1}>
+            {obligation.provider} · {obligation.category}
+          </Typography>
+        </View>
+
+        <Badge label={obligation.status} variant={badgeVariant} />
+      </View>
+
+      <View style={styles.divider} />
+
+      <View style={styles.financialRow}>
+        <View style={styles.amountCol}>
+          <Typography variant="caption" style={styles.metaLabel}>
+            MONTHLY INSTALLMENT
+          </Typography>
+          <Typography style={styles.installmentValue} numberOfLines={1}>
+            {formatCurrency(obligation.monthly_installment_amount, currency)}
             <Typography variant="caption" color={colors.textSecondary}>
-              {obligation.provider} · {obligation.category}
+              {' '}/mo
             </Typography>
-          </View>
-          <Badge label={obligation.status} variant={badgeVariant} />
+          </Typography>
         </View>
 
-        <View style={styles.divider} />
+        <View style={styles.amountColRight}>
+          <Typography variant="caption" style={styles.metaLabel}>
+            TOTAL VALUE
+          </Typography>
+          <Typography style={styles.totalValue} numberOfLines={1}>
+            {formatCurrency(obligation.total_amount, currency)}
+          </Typography>
+        </View>
+      </View>
 
-        <View style={styles.detailsRow}>
-          <View style={styles.detailCol}>
-            <Typography variant="caption" color={colors.textMuted}>
-              Monthly Installment
-            </Typography>
-            <Typography variant="bodyBold" color={colors.primary}>
-              {formatCurrency(obligation.monthly_installment_amount, currency)}/mo
-            </Typography>
-          </View>
-
-          <View style={styles.detailCol}>
-            <Typography variant="caption" color={colors.textMuted}>
-              Total Amount
-            </Typography>
-            <Typography variant="body" style={styles.totalAmount}>
-              {formatCurrency(obligation.total_amount, currency)}
-            </Typography>
-          </View>
+      <View style={styles.scheduleRow}>
+        <View style={styles.schedulePill}>
+          <Icon name="calendar" size={12} color="#0D9488" />
+          <Typography style={styles.scheduleText}>
+            Due on day {obligation.due_day_of_month}
+          </Typography>
         </View>
 
-        <View style={styles.footerRow}>
-          <View style={styles.footerItem}>
-            <Icon name="calendar" size={14} tone="muted" />
-            <Typography variant="caption" color={colors.textSecondary} style={styles.footerText}>
-              Due on day {obligation.due_day_of_month}
-            </Typography>
-          </View>
-          <View style={styles.footerItem}>
-            <Icon name="clock" size={14} tone="muted" />
-            <Typography variant="caption" color={colors.textSecondary} style={styles.footerText}>
-              {obligation.term_months} months
-            </Typography>
-          </View>
+        <View style={styles.schedulePill}>
+          <Icon name="clock" size={12} color={colors.textMuted} />
+          <Typography style={styles.scheduleText}>
+            {obligation.term_months} mo term
+          </Typography>
         </View>
-      </Card>
+      </View>
     </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
-  touchable: {
-    marginBottom: spacing.md,
-  },
-  card: {
+  cardContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
     padding: spacing.md,
-    borderRadius: borderRadius.xl,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  headerRow: {
+  topRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  iconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.primaryMuted,
+  iconBadge: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: '#F0FDFA',
+    borderWidth: 1,
+    borderColor: '#CCFBF1',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: spacing.md,
+    marginRight: spacing.sm + 2,
   },
-  titleContainer: {
+  titleCol: {
     flex: 1,
     marginRight: spacing.sm,
   },
   itemName: {
-    marginBottom: 2,
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    marginBottom: 1,
   },
   divider: {
     height: 1,
     backgroundColor: colors.border,
-    marginVertical: spacing.md,
+    marginVertical: spacing.sm + 2,
   },
-  detailsRow: {
+  financialRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: spacing.sm,
+    alignItems: 'flex-start',
+    marginBottom: spacing.sm + 2,
   },
-  detailCol: {
+  amountCol: {
     flex: 1,
   },
-  totalAmount: {
-    marginTop: 2,
+  amountColRight: {
+    alignItems: 'flex-end',
   },
-  footerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: spacing.xs,
+  metaLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 0.6,
+    color: colors.textMuted,
+    marginBottom: 2,
   },
-  footerItem: {
+  installmentValue: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: colors.primary,
+    fontVariant: ['tabular-nums'],
+  },
+  totalValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    fontVariant: ['tabular-nums'],
+  },
+  scheduleRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: spacing.sm,
   },
-  footerText: {
-    marginLeft: spacing.xs,
+  schedulePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    borderRadius: borderRadius.full,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    gap: 4,
+  },
+  scheduleText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.textSecondary,
   },
 });

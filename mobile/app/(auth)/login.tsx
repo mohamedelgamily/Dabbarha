@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, TouchableOpacity } from 'react-native';
 import { Link } from 'expo-router';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -9,10 +9,9 @@ import { ScreenWrapper } from '@/components/common/ScreenWrapper';
 import { Typography } from '@/components/common/Typography';
 import { Button } from '@/components/common/Button';
 import { Input } from '@/components/common/Input';
-import { Card } from '@/components/common/Card';
 import { ErrorBanner } from '@/components/common/ErrorBanner';
 import { Logo } from '@/components/common/Logo';
-import { colors, spacing } from '@/constants/theme';
+import { colors, spacing, borderRadius } from '@/constants/theme';
 
 export default function LoginScreen() {
   const { login, isLoading, error, clearError } = useAuthStore();
@@ -39,29 +38,32 @@ export default function LoginScreen() {
         email: data.email.trim().toLowerCase(),
         password: data.password,
       });
-      // Navigation is automatically handled by route protection in app/_layout.tsx
+      // Route protection in app/_layout.tsx navigates to tabs
     } catch {
-      // Error message is captured in Zustand authStore.error
+      // Captured in authStore.error
     }
   };
 
   return (
     <ScreenWrapper scrollable>
-      <View style={styles.brandRow}>
-        <Logo variant="full" tone="dark" />
+      {/* Brand Header */}
+      <View style={styles.brandContainer}>
+        <View style={styles.logoBadge}>
+          <Logo variant="symbol" tone="dark" width={32} height={32} />
+        </View>
+        <Typography style={styles.brandTitle}>DABBARHA</Typography>
+        <Typography variant="body" color={colors.textSecondary} align="center" style={styles.subtitle}>
+          Financial Planning & Liquidity Management
+        </Typography>
       </View>
-      <Typography
-        variant="body"
-        color={colors.textSecondary}
-        align="center"
-        style={styles.subtitle}
-      >
-        Financial Planning & Installment Tracking
-      </Typography>
 
-      <Card style={styles.formCard}>
-        <Typography variant="h2" style={styles.formTitle}>
+      {/* Login Card */}
+      <View style={styles.formCard}>
+        <Typography style={styles.formHeading}>
           Sign In
+        </Typography>
+        <Typography variant="body" color={colors.textSecondary} style={styles.formSub}>
+          Access your financial control center
         </Typography>
 
         <ErrorBanner message={error} onDismiss={clearError} />
@@ -110,7 +112,7 @@ export default function LoginScreen() {
           title="Sign In"
           onPress={handleSubmit(onSubmit)}
           isLoading={isLoading}
-          style={styles.button}
+          style={styles.submitButton}
         />
 
         <View style={styles.footerRow}>
@@ -118,40 +120,75 @@ export default function LoginScreen() {
             Don't have an account?{' '}
           </Typography>
           <Link href="/(auth)/register" asChild>
-            <Typography variant="caption" color={colors.primary} style={styles.link}>
-              Create Account
-            </Typography>
+            <TouchableOpacity activeOpacity={0.7}>
+              <Typography style={styles.linkText}>
+                Create Account
+              </Typography>
+            </TouchableOpacity>
           </Link>
         </View>
-      </Card>
+      </View>
     </ScreenWrapper>
   );
 }
 
 const styles = StyleSheet.create({
-  brandRow: {
+  brandContainer: {
     marginTop: spacing.xl,
-    marginBottom: spacing.xs,
+    marginBottom: spacing.lg,
     alignItems: 'center',
   },
+  logoBadge: {
+    width: 60,
+    height: 60,
+    borderRadius: 18,
+    backgroundColor: '#F0FDFA',
+    borderWidth: 1,
+    borderColor: '#CCFBF1',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.sm,
+  },
+  brandTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: 1.4,
+    color: colors.primary,
+  },
   subtitle: {
-    marginBottom: spacing.lg,
+    fontSize: 13,
+    marginTop: 4,
+    maxWidth: 260,
   },
   formCard: {
-    marginTop: spacing.xs,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  formTitle: {
+  formHeading: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    marginBottom: 2,
+  },
+  formSub: {
+    fontSize: 13,
     marginBottom: spacing.lg,
   },
-  button: {
+  submitButton: {
     marginTop: spacing.sm,
   },
   footerRow: {
     flexDirection: 'row',
     justifyContent: 'center',
+    alignItems: 'center',
     marginTop: spacing.lg,
   },
-  link: {
-    fontWeight: '600',
+  linkText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.primary,
   },
 });

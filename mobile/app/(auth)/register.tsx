@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, TouchableOpacity } from 'react-native';
 import { Link, router } from 'expo-router';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -9,7 +9,6 @@ import { ScreenWrapper } from '@/components/common/ScreenWrapper';
 import { Typography } from '@/components/common/Typography';
 import { Button } from '@/components/common/Button';
 import { Input } from '@/components/common/Input';
-import { Card } from '@/components/common/Card';
 import { ErrorBanner } from '@/components/common/ErrorBanner';
 import { Logo } from '@/components/common/Logo';
 import { colors, spacing } from '@/constants/theme';
@@ -27,9 +26,6 @@ export default function RegisterScreen() {
       name: '',
       email: '',
       password: '',
-      monthly_income: '',
-      fixed_expenses: '',
-      currency: 'EGP',
     },
   });
 
@@ -39,47 +35,38 @@ export default function RegisterScreen() {
 
   const onSubmit = async (data: RegisterFormData) => {
     try {
-      const monthlyIncome =
-        data.monthly_income && data.monthly_income.trim() !== ''
-          ? Number(data.monthly_income)
-          : 0;
-      const fixedExpenses =
-        data.fixed_expenses && data.fixed_expenses.trim() !== ''
-          ? Number(data.fixed_expenses)
-          : 0;
-
       await register({
         name: data.name.trim(),
         email: data.email.trim().toLowerCase(),
         password: data.password,
-        monthly_income: monthlyIncome,
-        fixed_expenses: fixedExpenses,
-        currency: (data.currency || 'EGP').trim().toUpperCase(),
       });
 
       router.replace('/(auth)/login');
     } catch {
-      // Error message is captured in Zustand authStore.error
+      // Captured in authStore.error
     }
   };
 
   return (
     <ScreenWrapper scrollable>
-      <View style={styles.brandRow}>
-        <Logo variant="full" tone="dark" />
+      {/* Brand Header */}
+      <View style={styles.brandContainer}>
+        <View style={styles.logoBadge}>
+          <Logo variant="symbol" tone="dark" width={32} height={32} />
+        </View>
+        <Typography style={styles.brandTitle}>DABBARHA</Typography>
+        <Typography variant="body" color={colors.textSecondary} align="center" style={styles.subtitle}>
+          Smart Financial Control Center
+        </Typography>
       </View>
-      <Typography
-        variant="body"
-        color={colors.textSecondary}
-        align="center"
-        style={styles.subtitle}
-      >
-        Create your financial account
-      </Typography>
 
-      <Card style={styles.formCard}>
-        <Typography variant="h2" style={styles.formTitle}>
+      {/* Registration Form Card */}
+      <View style={styles.formCard}>
+        <Typography style={styles.formHeading}>
           Create Account
+        </Typography>
+        <Typography variant="body" color={colors.textSecondary} style={styles.formSub}>
+          Start managing your cashflow and commitments
         </Typography>
 
         <ErrorBanner message={error} onDismiss={clearError} />
@@ -142,77 +129,11 @@ export default function RegisterScreen() {
           )}
         />
 
-        <View style={styles.row}>
-          <View style={styles.halfCol}>
-            <Controller
-              control={control}
-              name="monthly_income"
-              render={({ field: { onChange, onBlur, value } }) => (
-                <Input
-                  label="Monthly Income"
-                  placeholder="0.00"
-                  keyboardType="decimal-pad"
-                  value={value}
-                  onChangeText={(text) => {
-                    if (error) clearError();
-                    onChange(text);
-                  }}
-                  onBlur={onBlur}
-                  error={errors.monthly_income?.message}
-                  helperText="Optional"
-                />
-              )}
-            />
-          </View>
-          <View style={styles.halfCol}>
-            <Controller
-              control={control}
-              name="fixed_expenses"
-              render={({ field: { onChange, onBlur, value } }) => (
-                <Input
-                  label="Fixed Expenses"
-                  placeholder="0.00"
-                  keyboardType="decimal-pad"
-                  value={value}
-                  onChangeText={(text) => {
-                    if (error) clearError();
-                    onChange(text);
-                  }}
-                  onBlur={onBlur}
-                  error={errors.fixed_expenses?.message}
-                  helperText="Optional"
-                />
-              )}
-            />
-          </View>
-        </View>
-
-        <Controller
-          control={control}
-          name="currency"
-          render={({ field: { onChange, onBlur, value } }) => (
-            <Input
-              label="Currency Code"
-              placeholder="EGP"
-              autoCapitalize="characters"
-              maxLength={3}
-              value={value}
-              onChangeText={(text) => {
-                if (error) clearError();
-                onChange(text);
-              }}
-              onBlur={onBlur}
-              error={errors.currency?.message}
-              helperText="Default: EGP"
-            />
-          )}
-        />
-
         <Button
           title="Create Account"
           onPress={handleSubmit(onSubmit)}
           isLoading={isLoading}
-          style={styles.button}
+          style={styles.submitButton}
         />
 
         <View style={styles.footerRow}>
@@ -220,47 +141,75 @@ export default function RegisterScreen() {
             Already have an account?{' '}
           </Typography>
           <Link href="/(auth)/login" asChild>
-            <Typography variant="caption" color={colors.primary} style={styles.link}>
-              Sign In
-            </Typography>
+            <TouchableOpacity activeOpacity={0.7}>
+              <Typography style={styles.linkText}>
+                Sign In
+              </Typography>
+            </TouchableOpacity>
           </Link>
         </View>
-      </Card>
+      </View>
     </ScreenWrapper>
   );
 }
 
 const styles = StyleSheet.create({
-  brandRow: {
+  brandContainer: {
     marginTop: spacing.xl,
-    marginBottom: spacing.xs,
+    marginBottom: spacing.lg,
     alignItems: 'center',
   },
+  logoBadge: {
+    width: 60,
+    height: 60,
+    borderRadius: 18,
+    backgroundColor: '#F0FDFA',
+    borderWidth: 1,
+    borderColor: '#CCFBF1',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.sm,
+  },
+  brandTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: 1.4,
+    color: colors.primary,
+  },
   subtitle: {
-    marginBottom: spacing.lg,
+    fontSize: 13,
+    marginTop: 4,
+    maxWidth: 260,
   },
   formCard: {
-    marginTop: spacing.xs,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  formTitle: {
+  formHeading: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    marginBottom: 2,
+  },
+  formSub: {
+    fontSize: 13,
     marginBottom: spacing.lg,
   },
-  row: {
-    flexDirection: 'row',
-    gap: spacing.md,
-  },
-  halfCol: {
-    flex: 1,
-  },
-  button: {
+  submitButton: {
     marginTop: spacing.sm,
   },
   footerRow: {
     flexDirection: 'row',
     justifyContent: 'center',
+    alignItems: 'center',
     marginTop: spacing.lg,
   },
-  link: {
-    fontWeight: '600',
+  linkText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.primary,
   },
 });

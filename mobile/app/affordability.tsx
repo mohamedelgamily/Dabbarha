@@ -1,5 +1,10 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, ScrollView } from 'react-native';
+import {
+  View,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -7,25 +12,25 @@ import { z } from 'zod';
 import { useMutation } from '@tanstack/react-query';
 import { affordabilityApi } from '@/api/affordability';
 import {
-  AffordabilityRequest,
   AffordabilityResponse,
 } from '@/types/affordability';
 import { ApiErrorDetail } from '@/types/api';
 import { useAuthStore } from '@/store/authStore';
 import { ScreenWrapper } from '@/components/common/ScreenWrapper';
 import { Typography } from '@/components/common/Typography';
-import { Card } from '@/components/common/Card';
 import { Input } from '@/components/common/Input';
 import { Button } from '@/components/common/Button';
+import { Icon } from '@/components/common/Icon';
 import { ErrorBanner } from '@/components/common/ErrorBanner';
-import { colors, spacing, typography } from '@/constants/theme';
+import { colors, spacing, borderRadius } from '@/constants/theme';
+import { formatCurrency, formatMonthLabel, getTodayDateString } from '@/utils/format';
 
 const affordabilitySchema = z.object({
   amount: z
     .string()
     .min(1, 'Amount is required')
-    .refine((val) => !isNaN(Number(val)) && Number(val) >= 0, {
-      message: 'Amount must be 0 or greater',
+    .refine((val) => !isNaN(Number(val)) && Number(val) > 0, {
+      message: 'Amount must be greater than 0',
     }),
   start_date: z
     .string()
@@ -41,94 +46,7 @@ const affordabilitySchema = z.object({
 
 type AffordabilityFormData = z.infer<typeof affordabilitySchema>;
 
-function formatCurrency(value: string, currency: string): string {
-  const num = parseFloat(value);
-  if (isNaN(num)) {
-    return `${value} ${currency}`;
-  }
-  return `${num.toLocaleString('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })} ${currency}`;
-}
-
-function formatMonthLabel(monthStr: string): string {
-  const [year, month] = monthStr.split('-').map(Number);
-  const date = new Date(year, month - 1, 1);
-  return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-}
-
-function getTodayDateString(): string {
-  const d = new Date();
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-function getClassificationColor(
-  classification: string,
-): keyof typeof colors {
-  switch (classification) {
-    case 'Comfortable':
-      return 'success';
-    case 'Manageable':
-      return 'primary';
-    case 'Risky':
-      return 'warning';
-    case 'Not Affordable':
-      return 'error';
-    default:
-      return 'textSecondary';
-  }
-}
-
-interface MonthlyResultCardProps {
-  result: AffordabilityResponse['monthly_results'][0];
-  currency: string;
-}
-
-function MonthlyResultCard({ result, currency }: MonthlyResultCardProps) {
-  const buffer = parseFloat(result.projected_buffer);
-  const isNegative = buffer < 0;
-
-  return (
-    <Card
-      style={[styles.monthCard, isNegative && styles.negativeMonthCard]}
-      variant={isNegative ? 'outlined' : 'elevated'}
-    >
-      <View style={styles.monthHeader}>
-        <Typography variant="bodyBold">{formatMonthLabel(result.month)}</Typography>
-        {isNegative && (
-          <Typography variant="caption" color={colors.error}>
-            ⚠️ Negative
-          </Typography>
-        )}
-      </View>
-      <View style={styles.monthDetails}>
-        <View style={styles.detailRow}>
-          <Typography variant="caption" color={colors.textSecondary}>
-            Proposed Payment
-          </Typography>
-          <Typography variant="body">
-            {formatCurrency(result.proposed_commitment_amount, currency)}
-          </Typography>
-        </View>
-        <View style={styles.detailRow}>
-          <Typography variant="caption" color={colors.textSecondary}>
-            Projected Buffer
-          </Typography>
-          <Typography
-            variant="bodyBold"
-            color={isNegative ? colors.error : colors.success}
-          >
-            {formatCurrency(result.projected_buffer, currency)}
-          </Typography>
-        </View>
-      </View>
-    </Card>
-  );
-}
+const TERM_PRESETS = ['3', '6', '12', '24'];
 
 export default function AffordabilityScreen() {
   const router = useRouter();
@@ -136,9 +54,15 @@ export default function AffordabilityScreen() {
   const currency = user?.currency || 'EGP';
   const [apiError, setApiError] = useState<string | null>(null);
 
+  const monthlyIncome = Number(user?.monthly_income || 0);
+  const fixedExpenses = Number(user?.fixed_expenses || 0);
+  const hasFinancialProfile = monthlyIncome > 0 || fixedExpenses > 0;
+
   const {
     control,
     handleSubmit,
+    setValue,
+    watch,
     formState: { errors },
   } = useForm<AffordabilityFormData>({
     resolver: zodResolver(affordabilitySchema),
@@ -149,6 +73,15 @@ export default function AffordabilityScreen() {
     },
   });
 
+  const watchedAmount = watch('amount');
+  const watchedTerm = watch('term_months');
+  const numericAmount = Number(watchedAmount || 0);
+  const numericTerm = Number(watchedTerm || 0);
+  const estimatedMonthly =
+    numericAmount > 0 && numericTerm > 0
+      ? Math.round((numericAmount / numericTerm) * 100) / 100
+      : 0;
+
   const mutation = useMutation<
     AffordabilityResponse,
     { statusCode: number; message: string; detail?: string | ApiErrorDetail[] },
@@ -158,7 +91,7 @@ export default function AffordabilityScreen() {
       return affordabilityApi.evaluateAffordability(data);
     },
     onError: (err) => {
-      setApiError(err?.message || 'Failed to evaluate affordability.');
+      setApiError(err?.message || 'Failed to evaluate affordability analysis.');
     },
   });
 
@@ -167,40 +100,123 @@ export default function AffordabilityScreen() {
     mutation.mutate(data);
   };
 
-  const result: AffordabilityResponse | undefined = mutation.data;
-  const classificationColor = result
-    ? getClassificationColor(result.classification)
-    : 'textSecondary';
+  const result = mutation.data;
+
+  const getVerdictStyle = (classification: string) => {
+    switch (classification) {
+      case 'Comfortable':
+        return {
+          badgeBg: '#F0FDFA',
+          badgeBorder: '#CCFBF1',
+          textColor: '#0F766E',
+          cardBg: '#02262D',
+          accent: '#2DD4BF',
+        };
+      case 'Manageable':
+        return {
+          badgeBg: '#F0FDF4',
+          badgeBorder: '#DCFCE7',
+          textColor: '#15803D',
+          cardBg: '#02262D',
+          accent: '#4ADE80',
+        };
+      case 'Risky':
+        return {
+          badgeBg: '#FFFBEB',
+          badgeBorder: '#FEF3C7',
+          textColor: '#B45309',
+          cardBg: '#1C1917',
+          accent: '#FBBF24',
+        };
+      case 'Not Affordable':
+        return {
+          badgeBg: '#FEF2F2',
+          badgeBorder: '#FECACA',
+          textColor: '#B91C1C',
+          cardBg: '#1E1B1B',
+          accent: '#F87171',
+        };
+      default:
+        return {
+          badgeBg: '#F8FAFC',
+          badgeBorder: '#E2E8F0',
+          textColor: colors.textPrimary,
+          cardBg: '#02262D',
+          accent: '#2DD4BF',
+        };
+    }
+  };
+
+  const verdictStyle = result ? getVerdictStyle(result.classification) : null;
 
   return (
     <ScreenWrapper>
       <ScrollView
+        showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.header}>
-          <Typography variant="h1">Affordability</Typography>
-          <Typography
-            variant="body"
-            color={colors.textSecondary}
-            style={styles.subtitle}
+        {/* Top Navigation */}
+        <View style={styles.topNav}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={styles.backTouch}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
           >
-            Check if you can afford a new commitment
+            <Icon name="arrow-left" size={20} color={colors.textPrimary} />
+          </TouchableOpacity>
+          <Typography style={styles.navTitle}>Affordability Simulator</Typography>
+          <View style={{ width: 32 }} />
+        </View>
+
+        <View style={styles.headerBlock}>
+          <Typography variant="caption" style={styles.kicker}>
+            DECISION ENGINE
+          </Typography>
+          <Typography style={styles.screenHeading}>
+            Test Purchase Fit
+          </Typography>
+          <Typography variant="body" color={colors.textSecondary} style={styles.subtitle}>
+            Simulate how a new loan, installment, or expense impacts your future cashflow.
           </Typography>
         </View>
+
+        {/* Missing Financial Profile Warning */}
+        {!hasFinancialProfile && (
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => router.push('/(tabs)/profile' as any)}
+            style={styles.profilePromptBanner}
+          >
+            <View style={styles.promptIconWrap}>
+              <Icon name="settings" size={18} color="#0D9488" />
+            </View>
+            <View style={styles.promptTextCol}>
+              <Typography style={styles.promptTitle}>
+                Financial Profile Recommended
+              </Typography>
+              <Typography style={styles.promptDesc}>
+                Set your monthly income and fixed expenses in Profile to get a calibrated decision verdict.
+              </Typography>
+            </View>
+            <Icon name="chevron-right" size={16} tone="muted" />
+          </TouchableOpacity>
+        )}
 
         <ErrorBanner
           message={apiError}
           onDismiss={() => setApiError(null)}
         />
 
-        <Card style={styles.formCard}>
+        {/* Interactive Simulation Form */}
+        <View style={styles.formCard}>
           <Controller
             control={control}
             name="amount"
             render={({ field: { onChange, onBlur, value } }) => (
               <Input
-                label="Commitment Amount *"
+                label="Commitment / Purchase Total *"
                 placeholder="0.00"
                 keyboardType="decimal-pad"
                 value={value}
@@ -210,133 +226,230 @@ export default function AffordabilityScreen() {
                 }}
                 onBlur={onBlur}
                 error={errors.amount?.message}
+                helperText={
+                  estimatedMonthly > 0
+                    ? `Estimated monthly outflow: ${formatCurrency(estimatedMonthly, currency)}/mo`
+                    : undefined
+                }
               />
             )}
           />
 
-          <Controller
-            control={control}
-            name="start_date"
-            render={({ field: { onChange, onBlur, value } }) => (
-              <Input
-                label="Start Date (YYYY-MM-DD) *"
-                placeholder="2026-09-01"
-                value={value}
-                onChangeText={(text) => {
-                  if (apiError) setApiError(null);
-                  onChange(text);
-                }}
-                onBlur={onBlur}
-                error={errors.start_date?.message}
-                helperText="Format: YYYY-MM-DD"
-              />
-            )}
-          />
+          {/* Quick Term Presets */}
+          <View style={styles.presetSection}>
+            <Typography variant="label" style={styles.presetLabel}>
+              Term Presets (Months)
+            </Typography>
+            <View style={styles.presetsRow}>
+              {TERM_PRESETS.map((term) => {
+                const isSelected = watchedTerm === term;
+                return (
+                  <TouchableOpacity
+                    key={term}
+                    activeOpacity={0.7}
+                    onPress={() => setValue('term_months', term)}
+                    style={[
+                      styles.presetChip,
+                      isSelected && styles.presetChipSelected,
+                    ]}
+                  >
+                    <Typography
+                      style={[
+                        styles.presetChipText,
+                        isSelected && styles.presetChipTextSelected,
+                      ]}
+                    >
+                      {term} mo
+                    </Typography>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
 
-          <Controller
-            control={control}
-            name="term_months"
-            render={({ field: { onChange, onBlur, value } }) => (
-              <Input
-                label="Term (Months) *"
-                placeholder="12"
-                keyboardType="number-pad"
-                value={value}
-                onChangeText={(text) => {
-                  if (apiError) setApiError(null);
-                  onChange(text);
-                }}
-                onBlur={onBlur}
-                error={errors.term_months?.message}
+          <View style={styles.row}>
+            <View style={styles.halfCol}>
+              <Controller
+                control={control}
+                name="term_months"
+                render={({ field: { onChange, onBlur, value } }) => (
+                  <Input
+                    label="Custom Term *"
+                    placeholder="12"
+                    keyboardType="number-pad"
+                    value={value}
+                    onChangeText={(text) => {
+                      if (apiError) setApiError(null);
+                      onChange(text);
+                    }}
+                    onBlur={onBlur}
+                    error={errors.term_months?.message}
+                  />
+                )}
               />
-            )}
-          />
+            </View>
+
+            <View style={styles.halfCol}>
+              <Controller
+                control={control}
+                name="start_date"
+                render={({ field: { onChange, onBlur, value } }) => (
+                  <Input
+                    label="Start Date *"
+                    placeholder="2026-09-01"
+                    value={value}
+                    onChangeText={(text) => {
+                      if (apiError) setApiError(null);
+                      onChange(text);
+                    }}
+                    onBlur={onBlur}
+                    error={errors.start_date?.message}
+                  />
+                )}
+              />
+            </View>
+          </View>
 
           <Button
-            title="Check Affordability"
+            title="Evaluate Affordability"
             onPress={handleSubmit(onSubmit)}
             isLoading={mutation.isPending}
-            style={styles.submitButton}
+            style={styles.submitBtn}
           />
-        </Card>
+        </View>
 
-        {result && (
+        {/* Verdict & Impact Breakdown */}
+        {result && verdictStyle && (
           <View style={styles.resultSection}>
-            <Typography variant="h2" style={styles.sectionTitle}>
-              Result
-            </Typography>
+            <View style={styles.resultHeadingRow}>
+              <Typography style={styles.resultSectionHeading}>
+                Verdict Analysis
+              </Typography>
+            </View>
 
-            <Card style={styles.resultCard}>
-              <View style={styles.classificationRow}>
-                <Typography variant="body" color={colors.textSecondary}>
-                  Classification
-                </Typography>
-                <Typography
-                  variant="h3"
-                  color={colors[classificationColor]}
+            {/* Verdict Hero Card */}
+            <View
+              style={[
+                styles.verdictCard,
+                { backgroundColor: verdictStyle.cardBg },
+              ]}
+            >
+              <View style={styles.verdictTopRow}>
+                <View style={styles.verdictStatusCol}>
+                  <Typography style={styles.verdictKicker}>
+                    CLASSIFICATION
+                  </Typography>
+                  <Typography
+                    style={[
+                      styles.verdictTitle,
+                      { color: verdictStyle.accent },
+                    ]}
+                  >
+                    {result.classification}
+                  </Typography>
+                </View>
+
+                <View
+                  style={[
+                    styles.verdictBadge,
+                    {
+                      backgroundColor: verdictStyle.badgeBg,
+                      borderColor: verdictStyle.badgeBorder,
+                    },
+                  ]}
                 >
-                  {result.classification}
-                </Typography>
+                  <Typography
+                    style={[
+                      styles.verdictBadgeText,
+                      { color: verdictStyle.textColor },
+                    ]}
+                  >
+                    {result.worst_buffer_percentage}% Margin
+                  </Typography>
+                </View>
               </View>
 
-              <Typography
-                variant="body"
-                color={colors.textSecondary}
-                style={styles.explanation}
-              >
+              <Typography style={styles.verdictExplanation}>
                 {result.explanation}
               </Typography>
 
-              <View style={styles.resultDetails}>
-                <View style={styles.resultRow}>
-                  <Typography variant="caption" color={colors.textSecondary}>
-                    Worst Projected Buffer
+              <View style={styles.verdictDivider} />
+
+              <View style={styles.verdictMetricsGrid}>
+                <View style={styles.verdictMetric}>
+                  <Typography style={styles.verdictMetricLabel}>
+                    WORST BUFFER
                   </Typography>
-                  <Typography variant="bodyBold">
+                  <Typography
+                    style={[
+                      styles.verdictMetricValue,
+                      { color: verdictStyle.accent },
+                    ]}
+                  >
                     {formatCurrency(result.worst_projected_buffer, currency)}
                   </Typography>
                 </View>
-                <View style={styles.resultRow}>
-                  <Typography variant="caption" color={colors.textSecondary}>
-                    Worst Buffer Percentage
+
+                <View style={styles.verdictMetricDivider} />
+
+                <View style={styles.verdictMetric}>
+                  <Typography style={styles.verdictMetricLabel}>
+                    BOTTLENECK MONTH
                   </Typography>
-                  <Typography variant="bodyBold">
-                    {result.worst_buffer_percentage}%
-                  </Typography>
-                </View>
-                <View style={styles.resultRow}>
-                  <Typography variant="caption" color={colors.textSecondary}>
-                    Worst Month
-                  </Typography>
-                  <Typography variant="bodyBold">
+                  <Typography style={styles.verdictMetricValueLight}>
                     {formatMonthLabel(result.worst_month)}
                   </Typography>
                 </View>
               </View>
-            </Card>
+            </View>
 
-            <Typography variant="h3" style={styles.breakdownTitle}>
-              Monthly Breakdown
-            </Typography>
+            {/* Monthly Breakdown Timeline */}
+            <View style={styles.breakdownSection}>
+              <Typography style={styles.breakdownHeading}>
+                Commitment Period Impact
+              </Typography>
 
-            <View style={styles.monthsContainer}>
-              {result.monthly_results.map((monthResult) => (
-                <MonthlyResultCard
-                  key={monthResult.month}
-                  result={monthResult}
-                  currency={currency}
-                />
-              ))}
+              <View style={styles.breakdownList}>
+                {result.monthly_results.map((m) => {
+                  const isNeg = Number(m.projected_buffer) < 0;
+                  return (
+                    <View key={m.month} style={styles.breakdownCard}>
+                      <View style={styles.breakdownHeader}>
+                        <Typography style={styles.breakdownMonth}>
+                          {formatMonthLabel(m.month)}
+                        </Typography>
+                        <Typography
+                          style={[
+                            styles.breakdownBuffer,
+                            isNeg && styles.breakdownBufferDanger,
+                          ]}
+                        >
+                          {formatCurrency(m.projected_buffer, currency)} buffer
+                        </Typography>
+                      </View>
+
+                      <View style={styles.breakdownSub}>
+                        <Typography style={styles.breakdownPayment}>
+                          Installment: {formatCurrency(m.proposed_commitment_amount, currency)}
+                        </Typography>
+                        <Typography
+                          style={[
+                            styles.breakdownStatus,
+                            isNeg && styles.breakdownStatusDanger,
+                          ]}
+                        >
+                          {isNeg ? 'Deficit' : 'Sustainable'}
+                        </Typography>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
             </View>
           </View>
         )}
 
-        <Button
-          title="Back to Dashboard"
-          variant="secondary"
-          onPress={() => router.back()}
-          style={styles.backButton}
-        />
+        <View style={styles.bottomSpacer} />
       </ScrollView>
     </ScreenWrapper>
   );
@@ -344,77 +457,284 @@ export default function AffordabilityScreen() {
 
 const styles = StyleSheet.create({
   scrollContent: {
-    padding: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.xxl,
+    flexGrow: 1,
   },
-  header: {
-    marginVertical: spacing.md,
+  topNav: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  backTouch: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  navTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  headerBlock: {
+    marginBottom: spacing.lg,
+  },
+  kicker: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    color: colors.textMuted,
+    marginBottom: 2,
+  },
+  screenHeading: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    letterSpacing: -0.3,
   },
   subtitle: {
-    marginTop: spacing.xs,
+    marginTop: spacing.xs / 2,
+    lineHeight: 19,
+  },
+  profilePromptBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F0FDFA',
+    borderRadius: 16,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: '#CCFBF1',
+    marginBottom: spacing.lg,
+  },
+  promptIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#CCFBF1',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.md,
+  },
+  promptTextCol: {
+    flex: 1,
+    marginRight: spacing.sm,
+  },
+  promptTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0F766E',
+    marginBottom: 2,
+  },
+  promptDesc: {
+    fontSize: 11,
+    lineHeight: 16,
+    color: '#115E59',
   },
   formCard: {
-    padding: spacing.md,
-    marginBottom: spacing.lg,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: spacing.xl,
   },
-  submitButton: {
-    marginTop: spacing.md,
-  },
-  resultSection: {
-    marginBottom: spacing.lg,
-  },
-  sectionTitle: {
+  presetSection: {
     marginBottom: spacing.md,
   },
-  resultCard: {
-    padding: spacing.md,
-    marginBottom: spacing.md,
+  presetLabel: {
+    marginBottom: spacing.xs,
+    fontSize: 12,
+    color: colors.textSecondary,
+    fontWeight: '600',
   },
-  classificationRow: {
+  presetsRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.sm,
-  },
-  explanation: {
-    marginBottom: spacing.md,
-    lineHeight: 22,
-  },
-  resultDetails: {
     gap: spacing.sm,
   },
-  resultRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  presetChip: {
+    flex: 1,
+    paddingVertical: spacing.sm,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
   },
-  breakdownTitle: {
-    marginBottom: spacing.md,
+  presetChipSelected: {
+    backgroundColor: '#F0FDFA',
+    borderColor: '#2DD4BF',
   },
-  monthsContainer: {
+  presetChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  presetChipTextSelected: {
+    color: colors.primary,
+    fontWeight: '700',
+  },
+  row: {
+    flexDirection: 'row',
     gap: spacing.md,
   },
-  monthCard: {
-    padding: spacing.md,
+  halfCol: {
+    flex: 1,
   },
-  negativeMonthCard: {
-    borderColor: colors.error,
-    backgroundColor: colors.errorLight,
+  submitBtn: {
+    marginTop: spacing.sm,
   },
-  monthHeader: {
+  resultSection: {
+    marginBottom: spacing.xl,
+  },
+  resultHeadingRow: {
+    marginBottom: spacing.md,
+  },
+  resultSectionHeading: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  verdictCard: {
+    borderRadius: 20,
+    padding: spacing.lg,
+    marginBottom: spacing.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  verdictTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: spacing.md,
+  },
+  verdictStatusCol: {
+    flex: 1,
+  },
+  verdictKicker: {
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    color: '#94A3B8',
+    marginBottom: 2,
+  },
+  verdictTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+  },
+  verdictBadge: {
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: 4,
+    borderRadius: borderRadius.full,
+    borderWidth: 1,
+  },
+  verdictBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  verdictExplanation: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: '#E2E8F0',
+    marginBottom: spacing.md,
+  },
+  verdictDivider: {
+    height: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    marginBottom: spacing.md,
+  },
+  verdictMetricsGrid: {
+    flexDirection: 'row',
     alignItems: 'center',
+  },
+  verdictMetric: {
+    flex: 1,
+  },
+  verdictMetricDivider: {
+    width: 1,
+    height: 24,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    marginHorizontal: spacing.md,
+  },
+  verdictMetricLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 0.6,
+    color: '#94A3B8',
+    marginBottom: 2,
+  },
+  verdictMetricValue: {
+    fontSize: 15,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+  },
+  verdictMetricValueLight: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#F1F5F9',
+  },
+  breakdownSection: {
+    marginTop: spacing.xs,
+  },
+  breakdownHeading: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.textPrimary,
     marginBottom: spacing.sm,
   },
-  monthDetails: {
-    gap: spacing.xs,
+  breakdownList: {
+    gap: spacing.sm,
   },
-  detailRow: {
+  breakdownCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  breakdownHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 2,
+  },
+  breakdownMonth: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  breakdownBuffer: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.primary,
+    fontVariant: ['tabular-nums'],
+  },
+  breakdownBufferDanger: {
+    color: colors.error,
+  },
+  breakdownSub: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  backButton: {
-    marginTop: spacing.lg,
+  breakdownPayment: {
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
+  breakdownStatus: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#10B981',
+  },
+  breakdownStatusDanger: {
+    color: colors.error,
+  },
+  bottomSpacer: {
+    height: spacing.xl,
   },
 });

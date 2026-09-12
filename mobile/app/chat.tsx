@@ -4,8 +4,8 @@ import {
   StyleSheet,
   ScrollView,
   TextInput,
-  KeyboardAvoidingView,
-  Platform,
+  ActivityIndicator,
+
   TouchableOpacity,
 } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -20,13 +20,21 @@ import { ApiErrorDetail } from '@/types/api';
 import { ScreenWrapper } from '@/components/common/ScreenWrapper';
 import { Typography } from '@/components/common/Typography';
 import { Button } from '@/components/common/Button';
-import { Card } from '@/components/common/Card';
+import { Icon } from '@/components/common/Icon';
+import { Logo } from '@/components/common/Logo';
 import { ErrorBanner } from '@/components/common/ErrorBanner';
-import { colors, spacing, borderRadius } from '@/constants/theme';
+import { colors, typography } from '@/constants/theme';
 
 function generateMessageId(): string {
   return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 }
+
+const SUGGESTED_PROMPTS = [
+  'What are my active obligations?',
+  'Help me assess a purchase over 6 months.',
+  'What is my projected cash buffer next month?',
+  'How much will I pay across commitments this month?',
+];
 
 interface MessageBubbleProps {
   message: ChatMessage;
@@ -38,16 +46,28 @@ function MessageBubble({ message }: MessageBubbleProps) {
   return (
     <View
       style={[
-        styles.messageBubble,
-        isUser ? styles.userBubble : styles.assistantBubble,
+        styles.messageRow,
+        isUser ? styles.userMessageRow : styles.assistantMessageRow,
       ]}
     >
-      <Typography
-        variant="body"
-        color={isUser ? colors.textInverse : colors.textPrimary}
+      {!isUser && (
+        <View style={styles.assistantAvatar}>
+          <Logo variant="symbol" tone="dark" width={16} height={16} />
+        </View>
+      )}
+
+      <View
+        style={[
+          styles.messageBubble,
+          isUser ? styles.userBubble : styles.assistantBubble,
+        ]}
       >
-        {message.content}
-      </Typography>
+        <Typography
+          selectable style={isUser ? styles.userBubbleText : styles.assistantBubbleText}
+        >
+          {message.content}
+        </Typography>
+      </View>
     </View>
   );
 }
@@ -58,18 +78,21 @@ interface ConfirmationCardProps {
   isPending: boolean;
 }
 
-function ConfirmationCard({ onConfirm, onCancel, isPending }: ConfirmationCardProps) {
+function ConfirmationCard({
+  onConfirm,
+  onCancel,
+  isPending,
+}: ConfirmationCardProps) {
   return (
-    <Card style={styles.confirmationCard} variant="outlined">
-      <Typography variant="bodyBold" style={styles.confirmationTitle}>
-        Confirm Financial Action
-      </Typography>
-      <Typography
-        variant="body"
-        color={colors.textSecondary}
-        style={styles.confirmationDescription}
-      >
-        The assistant wants to modify your financial data. Please confirm to proceed or cancel to abort.
+    <View style={styles.confirmationCard}>
+      <View style={styles.confirmationHeader}>
+        <Icon name="alert-triangle" size={18} color="#D97706" />
+        <Typography style={styles.confirmationTitle}>
+          Action requested
+        </Typography>
+      </View>
+      <Typography style={styles.confirmationDescription}>
+        Review the proposed change in the response above. Confirm only when you are ready to update your financial records.
       </Typography>
       <View style={styles.confirmationButtons}>
         <Button
@@ -86,7 +109,7 @@ function ConfirmationCard({ onConfirm, onCancel, isPending }: ConfirmationCardPr
           style={styles.cancelButton}
         />
       </View>
-    </Card>
+    </View>
   );
 }
 
@@ -138,6 +161,7 @@ export default function ChatScreen() {
         if (metadata.tool && metadata.status === 'executed') {
           queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
           queryClient.invalidateQueries({ queryKey: ['obligations'] });
+          queryClient.invalidateQueries({ queryKey: ['forecast'] });
         }
 
         if (metadata.error === 'conversation_not_found') {
@@ -159,11 +183,9 @@ export default function ChatScreen() {
     },
   });
 
-  const handleSend = () => {
-    const trimmed = inputText.trim();
-    if (!trimmed || mutation.isPending) {
-      return;
-    }
+  const handleSendPrompt = (text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed || mutation.isPending) return;
 
     setApiError(null);
     setCancelledMessage(null);
@@ -177,17 +199,18 @@ export default function ChatScreen() {
     ]);
     scrollToBottom();
 
-    mutation.mutate({ message: trimmed }, {
-      onSuccess: () => {
-        scrollToBottom();
-      },
-    });
+    mutation.mutate(
+      { message: trimmed },
+      {
+        onSuccess: () => {
+          scrollToBottom();
+        },
+      }
+    );
   };
 
   const handleConfirm = () => {
-    if (!pendingConfirmation || mutation.isPending) {
-      return;
-    }
+    if (!pendingConfirmation || mutation.isPending) return;
 
     setApiError(null);
     setMessages((prev) => [
@@ -209,29 +232,45 @@ export default function ChatScreen() {
         onSuccess: () => {
           scrollToBottom();
         },
-      },
+      }
     );
   };
 
   const handleCancel = () => {
-    if (!pendingConfirmation) {
-      return;
-    }
-
+    if (!pendingConfirmation) return;
     setCancelledMessage('Action cancelled.');
     setPendingConfirmation(null);
     scrollToBottom();
   };
 
   return (
-    <ScreenWrapper edges={['top']}>
-      <KeyboardAvoidingView
-        style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-      >
-        <View style={styles.header}>
-          <Typography variant="h1">Dabbarha Assistant</Typography>
+    <ScreenWrapper edges={['top', 'bottom', 'left', 'right']} backgroundColor={colors.primary} statusBarStyle="light">
+      <View style={styles.container}>
+        {/* Top Header */}
+        <View style={styles.topHeader}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={styles.backTouch}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+          >
+            <Icon name="arrow-left" size={20} color="#E4EDE2" />
+          </TouchableOpacity>
+
+          <View style={styles.headerTitleRow}>
+            <View style={styles.headerSymbolBadge}>
+              <Logo variant="symbol" tone="light" width={22} height={22} />
+            </View>
+            <View>
+              <Typography style={styles.headerTitle}>Dabbarha</Typography>
+              <View style={styles.statusLiveRow}>
+
+                <Typography style={styles.statusLiveText}>Financial Copilot</Typography>
+              </View>
+            </View>
+          </View>
+
+          <View style={{ width: 36 }} />
         </View>
 
         <ErrorBanner
@@ -240,6 +279,7 @@ export default function ChatScreen() {
           style={styles.errorBanner}
         />
 
+        {/* Messages List */}
         <ScrollView
           ref={scrollViewRef}
           style={styles.messagesContainer}
@@ -249,9 +289,35 @@ export default function ChatScreen() {
         >
           {messages.length === 0 && !pendingConfirmation && (
             <View style={styles.emptyState}>
-              <Typography variant="body" color={colors.textSecondary} align="center">
-                Ask me anything about your finances, obligations, or budgeting.
+              <View style={styles.copilotBadge}>
+                <Logo variant="symbol" tone="dark" width={32} height={32} />
+              </View>
+              <Typography style={styles.emptyHeading}>
+                Ask Dabbarha
               </Typography>
+              <Typography style={styles.emptySubtitle}>
+                Plan your money with context. Ask about commitments, cashflow, affordability, or your next financial decision.
+              </Typography>
+
+              {/* Suggested Prompt Chips */}
+              <View style={styles.promptsContainer}>
+                <Typography style={styles.promptsLabel}>
+                  Start with a question
+                </Typography>
+                {SUGGESTED_PROMPTS.map((prompt, idx) => (
+                  <TouchableOpacity
+                    key={idx}
+                    activeOpacity={0.75}
+                    onPress={() => handleSendPrompt(prompt)}
+                    style={styles.promptChip} accessibilityRole="button"
+                  >
+                    <View style={styles.promptIcon}><Icon name={(['credit-card', 'pie-chart', 'trending-up', 'calendar'] as const)[idx]} size={18} color="#4D7E6A" /></View>
+                    <Typography style={styles.promptChipText}>
+                      {prompt}
+                    </Typography>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
           )}
 
@@ -259,6 +325,20 @@ export default function ChatScreen() {
             <MessageBubble key={message.id} message={message} />
           ))}
 
+          {!mutation.isPending && !pendingConfirmation && mutation.data?.metadata?.tool &&
+            (mutation.data.metadata.status === 'executed' || mutation.data.metadata.status === 'error') && (
+            <View style={[styles.resultNotice, mutation.data.metadata.status === 'error' && styles.resultError]} accessibilityLiveRegion="polite">
+              <Icon name={mutation.data.metadata.status === 'executed' ? 'check-circle' : 'alert-triangle'} size={17} color="#6C7756" />
+              <Typography style={styles.resultText}>{mutation.data.metadata.status === 'executed' ? 'Financial action completed.' : 'The financial action could not be completed. See Dabbarhaâ€™s response for details.'}</Typography>
+            </View>
+          )}
+          {!mutation.isPending && mutation.data?.metadata?.error && (
+            <View style={styles.resultNotice}>
+              <Typography style={styles.resultText}>{mutation.data.metadata.error === 'conversation_not_found'
+                ? 'This conversation is no longer available. Your next message will start a new conversation.'
+                : 'Dabbarha could not finish this request. Please try again.'}</Typography>
+            </View>
+          )}
           {cancelledMessage && (
             <View style={styles.cancelledIndicator}>
               <Typography variant="caption" color={colors.textSecondary}>
@@ -277,172 +357,102 @@ export default function ChatScreen() {
 
           {mutation.isPending && (
             <View style={styles.typingIndicator}>
-              <Typography variant="caption" color={colors.textSecondary}>
-                Dabbarha is typing...
-              </Typography>
+              <View style={styles.assistantAvatar}>
+                <Logo variant="symbol" tone="dark" width={14} height={14} />
+              </View>
+              <View style={styles.typingBubble} accessibilityLiveRegion="polite"><ActivityIndicator size="small" color="#658776" />
+                <Typography style={styles.typingText}>
+                  Thinking through your requestâ€¦
+                </Typography>
+              </View>
             </View>
           )}
         </ScrollView>
 
+        {/* Input Bar */}
         <View style={styles.inputContainer}>
           <TextInput
             style={styles.textInput}
             value={inputText}
             onChangeText={setInputText}
-            placeholder="Type your message..."
+            placeholder="Ask Dabbarha anything..." accessibilityLabel="Message Dabbarha"
             placeholderTextColor={colors.textMuted}
             multiline
             maxLength={1000}
             editable={!mutation.isPending}
           />
           <TouchableOpacity
-            onPress={handleSend}
+            onPress={() => handleSendPrompt(inputText)}
             disabled={!inputText.trim() || mutation.isPending}
             style={[
               styles.sendButton,
               (!inputText.trim() || mutation.isPending) &&
                 styles.sendButtonDisabled,
             ]}
-            activeOpacity={0.7}
+            activeOpacity={0.75} accessibilityRole="button" accessibilityLabel="Send message"
           >
-            <Typography
-              variant="bodyBold"
+            <Icon
+              name="send"
+              size={18}
               color={
                 !inputText.trim() || mutation.isPending
                   ? colors.textMuted
                   : colors.textInverse
               }
-            >
-              Send
-            </Typography>
+            />
           </TouchableOpacity>
         </View>
-
-        <Button
-          title="Back to Dashboard"
-          variant="secondary"
-          onPress={() => router.back()}
-          style={styles.backButton}
-        />
-      </KeyboardAvoidingView>
+      </View>
     </ScreenWrapper>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  header: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  errorBanner: {
-    marginHorizontal: spacing.md,
-    marginTop: spacing.sm,
-  },
-  messagesContainer: {
-    flex: 1,
-  },
-  messagesContent: {
-    padding: spacing.md,
-    flexGrow: 1,
-  },
-  emptyState: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: spacing.xxl,
-  },
-  messageBubble: {
-    maxWidth: '80%',
-    padding: spacing.sm,
-    borderRadius: borderRadius.lg,
-    marginBottom: spacing.sm,
-  },
-  userBubble: {
-    alignSelf: 'flex-end',
-    backgroundColor: colors.primary,
-    borderBottomRightRadius: borderRadius.sm,
-  },
-  assistantBubble: {
-    alignSelf: 'flex-start',
-    backgroundColor: colors.surfaceAlt,
-    borderBottomLeftRadius: borderRadius.sm,
-  },
-  typingIndicator: {
-    alignSelf: 'flex-start',
-    padding: spacing.xs,
-    marginBottom: spacing.sm,
-  },
-  confirmationCard: {
-    padding: spacing.md,
-    marginVertical: spacing.sm,
-    borderColor: colors.warning,
-    backgroundColor: colors.warningLight,
-  },
-  confirmationTitle: {
-    marginBottom: spacing.xs,
-    color: colors.warning,
-  },
-  confirmationDescription: {
-    marginBottom: spacing.md,
-    lineHeight: 20,
-  },
-  confirmationButtons: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  confirmButton: {
-    flex: 1,
-  },
-  cancelButton: {
-    flex: 1,
-  },
-  cancelledIndicator: {
-    alignSelf: 'center',
-    padding: spacing.xs,
-    marginBottom: spacing.sm,
-  },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    padding: spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    backgroundColor: colors.surface,
-    gap: spacing.sm,
-  },
-  textInput: {
-    flex: 1,
-    minHeight: 44,
-    maxHeight: 120,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: borderRadius.lg,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    fontSize: 16,
-    color: colors.textPrimary,
-    backgroundColor: colors.background,
-  },
-  sendButton: {
-    backgroundColor: colors.primary,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.lg,
-    justifyContent: 'center',
-    alignItems: 'center',
-    minHeight: 44,
-  },
-  sendButtonDisabled: {
-    backgroundColor: colors.surfaceAlt,
-  },
-  backButton: {
-    marginHorizontal: spacing.md,
-    marginBottom: spacing.md,
-  },
+  container: { flex: 1, backgroundColor: '#F6F4EF' },
+  topHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingHorizontal: 17, paddingTop: 10, paddingBottom: 17, backgroundColor: '#02262D', borderBottomLeftRadius: 23, borderBottomRightRadius: 23 },
+  backTouch: { width: 40, height: 44, borderRadius: 20, backgroundColor: '#174041', alignItems: 'center', justifyContent: 'center' },
+  headerTitleRow: { flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 11 },
+  headerSymbolBadge: { width: 35, height: 40, alignItems: 'center', justifyContent: 'center' },
+  headerTitle: { ...typography.title, fontSize: 23, lineHeight: 30, color: '#F5F5E9' },
+  statusLiveRow: { flexDirection: 'row', alignItems: 'center' },
+  statusLiveText: { fontSize: 11, lineHeight: 17, color: '#ACC8BA' },
+  errorBanner: { marginHorizontal: 16, marginTop: 8 },
+  messagesContainer: { flex: 1 },
+  messagesContent: { paddingHorizontal: 18, paddingTop: 21, paddingBottom: 22, flexGrow: 1 },
+  emptyState: { paddingTop: 13, paddingBottom: 14 },
+  copilotBadge: { width: 68, height: 68, borderRadius: 24, backgroundColor: '#E3EDE1', borderWidth: 1, borderColor: '#BECFBB', alignItems: 'center', justifyContent: 'center', marginBottom: 18, transform: [{ rotate: '-4deg' }] },
+  emptyHeading: { ...typography.title, fontSize: 32, lineHeight: 41, color: '#234D40' },
+  emptySubtitle: { fontSize: 14, lineHeight: 23, color: '#75877A', marginTop: 9, maxWidth: 370 },
+  promptsContainer: { marginTop: 25, gap: 9 },
+  promptsLabel: { ...typography.title, fontSize: 15, lineHeight: 22, color: '#3E5C4D', marginBottom: 3 },
+  promptChip: { flexDirection: 'row', gap: 12, alignItems: 'center', padding: 12, minHeight: 58, borderRadius: 17, backgroundColor: '#FCFBF7', borderWidth: 1, borderColor: '#E5E9DE' },
+  promptIcon: { width: 33, height: 33, borderRadius: 11, backgroundColor: '#EAF0E4', alignItems: 'center', justifyContent: 'center' },
+  promptChipText: { flex: 1, fontSize: 13, lineHeight: 20, color: '#375B4B' },
+  messageRow: { flexDirection: 'row', marginBottom: 23, gap: 9, alignItems: 'flex-start' },
+  userMessageRow: { justifyContent: 'flex-end' },
+  assistantMessageRow: { justifyContent: 'flex-start' },
+  assistantAvatar: { width: 29, height: 32, borderRadius: 11, backgroundColor: '#E4EDE0', alignItems: 'center', justifyContent: 'center', marginTop: 4 },
+  messageBubble: { flexShrink: 1, minWidth: 0 },
+  userBubble: { maxWidth: '87%', backgroundColor: '#073A39', paddingVertical: 12, paddingHorizontal: 16, borderRadius: 21, borderBottomRightRadius: 6 },
+  assistantBubble: { flex: 1, paddingVertical: 5, paddingRight: 3 },
+  userBubbleText: { fontSize: 15, lineHeight: 24, color: '#F2F5EA', fontVariant: ['tabular-nums'] },
+  assistantBubbleText: { fontSize: 15, lineHeight: 25, color: '#29483D', fontVariant: ['tabular-nums'] },
+  confirmationCard: { backgroundColor: '#F1EBD8', borderWidth: 1, borderColor: '#D9CAA1', borderRadius: 20, padding: 18, marginTop: 4, marginBottom: 19 },
+  confirmationHeader: { flexDirection: 'row', gap: 9, alignItems: 'center', marginBottom: 9 },
+  confirmationTitle: { ...typography.title, fontSize: 20, lineHeight: 27, color: '#625333', flexShrink: 1 },
+  confirmationDescription: { fontSize: 13, lineHeight: 21, color: '#7D735A', marginBottom: 17 },
+  confirmationButtons: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 10 },
+  confirmButton: { flex: 1, minWidth: 110, minHeight: 47 },
+  cancelButton: { flex: 1, minWidth: 110, minHeight: 47, backgroundColor: '#E5DDC7' },
+  cancelledIndicator: { alignItems: 'center', paddingVertical: 10, marginBottom: 12 },
+  resultNotice: { flexDirection: 'row', gap: 8, padding: 12, borderRadius: 12, backgroundColor: '#E4EDDF', marginBottom: 15 },
+  resultError: { backgroundColor: '#F0E5D9' },
+  resultText: { flex: 1, fontSize: 12, lineHeight: 19, color: '#667458' },
+  typingIndicator: { flexDirection: 'row', gap: 9, alignItems: 'center', marginTop: 2, marginBottom: 14 },
+  typingBubble: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 9, paddingVertical: 12 },
+  typingText: { fontSize: 12, lineHeight: 19, color: '#6D8674', flexShrink: 1 },
+  inputContainer: { flexDirection: 'row', alignItems: 'flex-end', gap: 10, backgroundColor: '#FBFAF5', borderTopWidth: 1, borderTopColor: '#DEE5D6', paddingHorizontal: 16, paddingTop: 12, paddingBottom: 13 },
+  textInput: { fontFamily: typography.fontFamily, flex: 1, minHeight: 48, maxHeight: 135, backgroundColor: '#F4F4ED', borderWidth: 1, borderColor: '#DBE2D4', borderRadius: 21, paddingHorizontal: 15, paddingTop: 12, paddingBottom: 12, fontSize: 15, lineHeight: 22, color: '#23463C' },
+  sendButton: { width: 46, height: 46, borderRadius: 23, backgroundColor: '#02262D', alignItems: 'center', justifyContent: 'center', marginBottom: 1 },
+  sendButtonDisabled: { backgroundColor: '#E1E7DB' },
 });

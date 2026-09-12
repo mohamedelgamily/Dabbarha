@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { authApi } from '@/api/auth';
+import { authApi, type UserUpdate } from '@/api/auth';
 import { UserCreate, UserLogin, UserResponse } from '@/types/auth';
 import {
   clearAuthStorage,
@@ -23,6 +23,7 @@ interface AuthStoreState {
   logout: () => Promise<void>;
   setUser: (user: UserResponse | null) => void;
   clearError: () => void;
+  updateProfile: (data: UserUpdate) => Promise<UserResponse>;
 }
 
 export const useAuthStore = create<AuthStoreState>((set, get) => ({
@@ -147,5 +148,19 @@ export const useAuthStore = create<AuthStoreState>((set, get) => ({
 
   clearError: () => {
     set({ error: null });
+  },
+
+  updateProfile: async (data: UserUpdate) => {
+    try {
+      set({ isLoading: true, error: null });
+      const updated = await authApi.updateMe(data);
+      await saveUser(updated);
+      set({ user: updated, isLoading: false, error: null });
+      return updated;
+    } catch (err: any) {
+      const message = err?.message || 'Failed to update profile. Please try again.';
+      set({ isLoading: false, error: message });
+      throw err;
+    }
   },
 }));

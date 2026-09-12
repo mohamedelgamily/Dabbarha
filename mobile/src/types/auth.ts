@@ -2,9 +2,6 @@ export interface UserCreate {
   name: string;
   email: string;
   password: string;
-  monthly_income?: number | string;
-  fixed_expenses?: number | string;
-  currency?: string;
 }
 
 export interface UserLogin {
