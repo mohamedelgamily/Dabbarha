@@ -1,6 +1,7 @@
 import React from 'react';
 import { Text, TextStyle, StyleSheet, TextProps, StyleProp } from 'react-native';
 import { colors, typography } from '@/constants/theme';
+import { isArabic } from '@/i18n';
 
 export type TypographyVariant =
   | 'hero'
@@ -23,6 +24,8 @@ interface TypographyProps extends TextProps {
   align?: 'auto' | 'left' | 'right' | 'center' | 'justify';
   style?: StyleProp<TextStyle>;
   children: React.ReactNode;
+  /** Content follows its own script; numbers/email stay LTR without changing alignment. */
+  direction?: 'locale' | 'auto' | 'ltr';
 }
 
 export function Typography({
@@ -31,10 +34,19 @@ export function Typography({
   align = 'left',
   style,
   children,
+  direction = 'locale',
   ...props
 }: TypographyProps) {
   const variantStyle = variantStyles[variant];
   const textColor = color || defaultColors[variant];
+  const resolved: TextStyle = StyleSheet.flatten([variantStyle, style]) || {};
+  const rtl = isArabic();
+  const text = typeof children === 'string' ? children : '';
+  const arabicFont = (rtl && !/^dabbarha$/i.test(text)) || /[\u0600-\u06ff]/.test(text);
+  const alignment = resolved.textAlign || align;
+  // RN 0.86 maps left/right to start/end for RTL text layouts on both platforms.
+  // Do not reverse these again. Explicit LTR runs override the text layout direction.
+  const textAlign = direction === 'auto' ? 'auto' : alignment;
 
   return (
     <Text
@@ -42,6 +54,12 @@ export function Typography({
         variantStyle,
         { color: textColor, textAlign: align },
         style,
+        { textAlign, direction: direction === 'ltr' ? 'ltr' : rtl ? 'rtl' : 'ltr', writingDirection: direction === 'auto' ? 'auto' : direction === 'ltr' ? 'ltr' : rtl ? 'rtl' : 'ltr' },
+        arabicFont && {
+          fontFamily: Number(resolved.fontWeight || 400) >= 600 ? 'NotoNaskhArabicBold' : 'NotoNaskhArabic',
+          fontWeight: '400', letterSpacing: 0, textTransform: 'none',
+          lineHeight: Math.max(resolved.lineHeight || 0, (resolved.fontSize || 15) * 1.65),
+        },
       ]}
       {...props}
     >

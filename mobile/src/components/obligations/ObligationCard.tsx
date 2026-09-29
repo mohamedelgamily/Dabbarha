@@ -1,3 +1,4 @@
+import { t, statusLabel, categoryLabel, monthCount, formatCount } from '@/i18n';
 import React from 'react';
 import { View, StyleSheet, TouchableOpacity } from 'react-native';
 import { ObligationResponse, ObligationStatus } from '@/types/obligation';
@@ -57,11 +58,11 @@ export function ObligationCard({ obligation, currency, onPress }: ObligationCard
             {obligation.item_name}
           </Typography>
           <Typography variant="caption" color={colors.textSecondary} numberOfLines={1}>
-            {obligation.provider} · {obligation.category}
+            {obligation.provider} · {categoryLabel(obligation.category)}
           </Typography>
         </View>
 
-        <Badge label={obligation.status} variant={badgeVariant} />
+        <Badge label={statusLabel(obligation.status)} variant={badgeVariant} />
       </View>
 
       <View style={styles.divider} />
@@ -69,20 +70,17 @@ export function ObligationCard({ obligation, currency, onPress }: ObligationCard
       <View style={styles.financialRow}>
         <View style={styles.amountCol}>
           <Typography variant="caption" style={styles.metaLabel}>
-            MONTHLY INSTALLMENT
-          </Typography>
+            {t("MONTHLY INSTALLMENT")}</Typography>
           <Typography style={styles.installmentValue} numberOfLines={1}>
             {formatCurrency(obligation.monthly_installment_amount, currency)}
             <Typography variant="caption" color={colors.textSecondary}>
-              {' '}/mo
-            </Typography>
+              {' '}{t("/mo")}</Typography>
           </Typography>
         </View>
 
         <View style={styles.amountColRight}>
           <Typography variant="caption" style={styles.metaLabel}>
-            TOTAL VALUE
-          </Typography>
+            {t("TOTAL VALUE")}</Typography>
           <Typography style={styles.totalValue} numberOfLines={1}>
             {formatCurrency(obligation.total_amount, currency)}
           </Typography>
@@ -93,14 +91,14 @@ export function ObligationCard({ obligation, currency, onPress }: ObligationCard
         <View style={styles.schedulePill}>
           <Icon name="calendar" size={12} color="#0D9488" />
           <Typography style={styles.scheduleText}>
-            Due on day {obligation.due_day_of_month}
+            {t('Due on day {day}', { day: formatCount(obligation.due_day_of_month) })}
           </Typography>
         </View>
 
         <View style={styles.schedulePill}>
           <Icon name="clock" size={12} color={colors.textMuted} />
           <Typography style={styles.scheduleText}>
-            {obligation.term_months} mo term
+            {monthCount(obligation.term_months)}
           </Typography>
         </View>
       </View>
@@ -130,11 +128,11 @@ const styles = StyleSheet.create({
     borderColor: '#CCFBF1',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: spacing.sm + 2,
+    marginEnd: spacing.sm + 2,
   },
   titleCol: {
     flex: 1,
-    marginRight: spacing.sm,
+    marginEnd: spacing.sm,
   },
   itemName: {
     fontSize: 15,

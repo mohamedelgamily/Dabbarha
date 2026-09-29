@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -16,8 +17,8 @@ import { Icon } from '@/components/common/Icon';
 import { useAuthStore } from '@/store/authStore';
 import { colors, typography } from '@/constants/theme';
 import { formatCurrency } from '@/utils/format';
+import { LanguageSelector } from '@/components/common/LanguageSelector';
 
-const CURRENCIES = ['EGP', 'USD', 'SAR', 'AED', 'EUR'];
 
 export default function ProfileScreen() {
   const queryClient = useQueryClient();
@@ -49,9 +50,9 @@ export default function ProfileScreen() {
   }, [user]);
 
   const incomeError = monthlyIncome.trim() !== '' && (!Number.isFinite(Number(monthlyIncome)) || Number(monthlyIncome) < 0)
-    ? 'Enter a valid amount of zero or more.' : undefined;
+    ? t("Enter a valid amount of zero or more.") : undefined;
   const expensesError = fixedExpenses.trim() !== '' && (!Number.isFinite(Number(fixedExpenses)) || Number(fixedExpenses) < 0)
-    ? 'Enter a valid amount of zero or more.' : undefined;
+    ? t("Enter a valid amount of zero or more.") : undefined;
   const handleSave = async () => {
     if (isSaving || incomeError || expensesError) return;
     setSaveError(null);
@@ -63,7 +64,6 @@ export default function ProfileScreen() {
           monthlyIncome.trim() === '' ? undefined : Number(monthlyIncome),
         fixed_expenses:
           fixedExpenses.trim() === '' ? undefined : Number(fixedExpenses),
-        currency: currency.trim() || 'EGP',
       });
       queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
       queryClient.invalidateQueries({ queryKey: ['forecast'] });
@@ -71,7 +71,7 @@ export default function ProfileScreen() {
       setIsEditing(false);
       setTimeout(() => setSaveSuccess(false), 4000);
     } catch (err) {
-      setSaveError((err as { message?: string })?.message || 'Failed to update profile. Please try again.');
+      setSaveError((err as { message?: string })?.message || t("Failed to update profile. Please try again."));
     } finally {
       setIsSaving(false);
     }
@@ -79,12 +79,12 @@ export default function ProfileScreen() {
 
   const handleSignOutConfirm = () => {
     Alert.alert(
-      'Sign Out',
-      'Are you sure you want to sign out of your Dabbarha account?',
+      t("Sign Out"),
+      t("Are you sure you want to sign out of your Dabbarha account?"),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t("Cancel"), style: 'cancel' },
         {
-          text: 'Sign Out',
+          text: t("Sign Out"),
           style: 'destructive',
           onPress: () => logout(),
         },
@@ -97,7 +97,6 @@ export default function ProfileScreen() {
   const savedCurrency = user?.currency || 'EGP';
   const hasIncome = Number(user?.monthly_income || 0) > 0;
   const hasExpenses = Number(user?.fixed_expenses || 0) > 0;
-  const currencyOptions = Array.from(new Set([...CURRENCIES, savedCurrency]));
   const beginEdit = () => {
     if (isEditing || isSaving) return;
     setMonthlyIncome(Number(user?.monthly_income || 0) === 0 ? '' : String(user?.monthly_income));
@@ -120,89 +119,79 @@ export default function ProfileScreen() {
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
         <View style={styles.hero}>
-          <Typography style={styles.pageTitle}>Profile</Typography>
-          <Typography style={styles.subtitle}>Your account & financial settings</Typography>
+          <Typography style={styles.pageTitle}>{t("Profile")}</Typography>
+          <Typography style={styles.subtitle}>{t("Your account & financial settings")}</Typography>
           <View style={styles.identityCard}>
             <View style={styles.avatar}><Typography style={styles.initial}>{userInitial || 'U'}</Typography></View>
             <View style={styles.identityCopy}>
-              <Typography style={styles.userName}>{user?.name || 'Your account'}</Typography>
-              {user?.email && <Typography style={styles.email} selectable>{user.email}</Typography>}
+              <Typography style={styles.userName}>{user?.name || t("Your account")}</Typography>
+              {user?.email && <Typography direction="ltr" style={styles.email} selectable>{user.email}</Typography>}
             </View>
           </View>
         </View>
-        <View style={styles.lower}>
-          <TouchableOpacity style={[styles.setupCard, hasIncome && styles.configuredCard]} onPress={beginEdit}
-            disabled={isSaving} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel={hasIncome ? 'Review financial profile' : 'Continue financial profile setup'}>
+        <View style={[styles.lower, hasIncome && { paddingTop: 16 }]}>
+          {!hasIncome && <TouchableOpacity style={[styles.setupCard, hasIncome && styles.configuredCard]} onPress={beginEdit}
+            disabled={isSaving} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel={hasIncome ? t("Review financial profile") : t("Continue financial profile setup")}>
             <View pointerEvents="none" style={styles.setupArc} />
             <View style={styles.setupTop}>
               <View style={styles.setupIcon}><Icon name={hasIncome ? 'check-circle' : 'trending-up'} size={28} color="#D6C698" strokeWidth={1.3} /></View>
               <View style={styles.setupCopy}>
-                <Typography style={styles.setupTitle}>{hasIncome ? 'Your financial baseline is set' : 'Build a smarter you'}</Typography>
+                <Typography style={styles.setupTitle}>{hasIncome ? t("Your financial baseline is set") : t("Build a smarter you")}</Typography>
                 <Typography style={styles.setupBody}>{hasIncome
-                  ? 'Keep your income and recurring expenses up to date as your finances change.'
-                  : 'Add optional financial details for more accurate forecasts and affordability insights.'}</Typography>
+                  ? t("Keep your income and recurring expenses up to date as your finances change.")
+                  : t("Add optional financial details for more accurate forecasts and affordability insights.")}</Typography>
               </View>
               <Icon name="chevron-right" size={17} color="#DAD4B6" />
             </View>
-            <View style={styles.setupCta}><Typography style={styles.setupCtaText}>{hasIncome ? 'Review Financial Profile' : 'Continue Setup'}</Typography><Icon name="chevron-right" size={16} color="#524F35" /></View>
-          </TouchableOpacity>
+            <View style={styles.setupCta}><Typography style={styles.setupCtaText}>{hasIncome ? t("Review Financial Profile") : t("Continue Setup")}</Typography><Icon name="chevron-right" size={16} color="#524F35" /></View>
+          </TouchableOpacity>}
 
           <View style={styles.sectionHeader}>
-            <Typography style={styles.sectionTitle}>Financial Baseline</Typography>
-            {!isEditing && <TouchableOpacity onPress={beginEdit} style={styles.editAction} accessibilityRole="button"><Typography style={styles.editText}>Edit</Typography></TouchableOpacity>}
+            <Typography style={styles.sectionTitle}>{t("Financial Baseline")}</Typography>
+            {!isEditing && <TouchableOpacity onPress={beginEdit} style={styles.editAction} accessibilityRole="button"><Typography style={styles.editText}>{t("Edit")}</Typography></TouchableOpacity>}
           </View>
           <ErrorBanner message={saveError || error} onDismiss={() => { setSaveError(null); clearError(); }} />
-          {saveSuccess && <View style={styles.success}><Icon name="check-circle" size={17} color="#3C7860" /><Typography style={styles.successText} accessibilityLiveRegion="polite">Financial profile updated successfully.</Typography></View>}
+          {saveSuccess && <View style={styles.success}><Icon name="check-circle" size={17} color="#3C7860" /><Typography style={styles.successText} accessibilityLiveRegion="polite">{t("Financial profile updated successfully.")}</Typography></View>}
 
           {isEditing ? <View style={styles.editor}>
-            <Typography style={styles.editorNote}>Financial details are optional. Leave an amount blank to keep its saved value.</Typography>
-            <Input label={'Monthly Net Income · ' + currency} value={monthlyIncome} onChangeText={(value) => { setMonthlyIncome(value); setSaveError(null); }}
-              keyboardType="decimal-pad" placeholder="Not set" error={incomeError} editable={!isSaving}
-              style={styles.numericInput} helperText="Expected monthly revenue after deductions" />
-            <Input label={'Fixed Monthly Expenses · ' + currency} value={fixedExpenses} onChangeText={(value) => { setFixedExpenses(value); setSaveError(null); }}
-              keyboardType="decimal-pad" placeholder="Not set" error={expensesError} editable={!isSaving}
-              style={styles.numericInput} helperText="Rent, utilities, subscriptions and recurring overhead" />
+            <Typography style={styles.editorNote}>{t("Financial details are optional. Leave an amount blank to keep its saved value.")}</Typography>
+            <Input label={t("Monthly Net Income · ") + currency} value={monthlyIncome} onChangeText={(value) => { setMonthlyIncome(value); setSaveError(null); }}
+              keyboardType="decimal-pad" placeholder={t("Not set")} error={incomeError} editable={!isSaving}
+              style={styles.numericInput} helperText={t("Expected monthly revenue after deductions")} />
+            <Input label={t("Fixed Monthly Expenses · ") + currency} value={fixedExpenses} onChangeText={(value) => { setFixedExpenses(value); setSaveError(null); }}
+              keyboardType="decimal-pad" placeholder={t("Not set")} error={expensesError} editable={!isSaving}
+              style={styles.numericInput} helperText={t("Rent, utilities, subscriptions and recurring overhead")} />
           </View> : <View>
-            <TouchableOpacity onPress={beginEdit} style={styles.financialRow} accessibilityRole="button" accessibilityLabel="Edit monthly net income">
+            <TouchableOpacity onPress={beginEdit} style={styles.financialRow} accessibilityRole="button" accessibilityLabel={t("Edit monthly net income")}>
               <View style={styles.rowIcon}><Icon name="wallet" size={22} color="#43776B" strokeWidth={1.5} /></View>
               <View style={styles.rowCopy}>
-                <Typography style={styles.rowLabel}>Monthly Net Income</Typography>
-                <Typography style={styles.rowValue}>{hasIncome ? formatCurrency(user?.monthly_income, savedCurrency) : 'Not set'}</Typography>
-                <Typography style={styles.rowHint}>Expected monthly revenue after deductions</Typography>
+                <Typography style={styles.rowLabel}>{t("Monthly Net Income")}</Typography>
+                <Typography style={styles.rowValue}>{hasIncome ? formatCurrency(user?.monthly_income, savedCurrency) : t("Not set")}</Typography>
+                <Typography style={styles.rowHint}>{t("Expected monthly revenue after deductions")}</Typography>
               </View>
               <Icon name="chevron-right" size={17} color="#719087" />
             </TouchableOpacity>
-            <TouchableOpacity onPress={beginEdit} style={styles.financialRow} accessibilityRole="button" accessibilityLabel="Edit fixed monthly expenses">
+            <TouchableOpacity onPress={beginEdit} style={styles.financialRow} accessibilityRole="button" accessibilityLabel={t("Edit fixed monthly expenses")}>
               <View style={styles.rowIcon}><Icon name="home" size={22} color="#43776B" strokeWidth={1.5} /></View>
               <View style={styles.rowCopy}>
-                <Typography style={styles.rowLabel}>Fixed Monthly Expenses</Typography>
-                <Typography style={styles.rowValue}>{hasIncome || hasExpenses ? formatCurrency(user?.fixed_expenses, savedCurrency) : 'Not set'}</Typography>
-                <Typography style={styles.rowHint}>Rent, utilities, subscriptions and recurring overhead</Typography>
+                <Typography style={styles.rowLabel}>{t("Fixed Monthly Expenses")}</Typography>
+                <Typography style={styles.rowValue}>{hasIncome || hasExpenses ? formatCurrency(user?.fixed_expenses, savedCurrency) : t("Not set")}</Typography>
+                <Typography style={styles.rowHint}>{t("Rent, utilities, subscriptions and recurring overhead")}</Typography>
               </View>
               <Icon name="chevron-right" size={17} color="#719087" />
             </TouchableOpacity>
           </View>}
 
-          <Typography style={styles.currencyLabel}>Primary Currency</Typography>
-          <View style={styles.currencies}>
-            {currencyOptions.map((option) => {
-              const selected = (isEditing ? currency : savedCurrency) === option;
-              return <TouchableOpacity key={option} disabled={isSaving} onPress={() => { beginEdit(); setCurrency(option); }}
-                style={[styles.currencyChip, selected && styles.currencySelected]} accessibilityRole="radio" accessibilityState={{ checked: selected, disabled: isSaving }}>
-                <Typography style={[styles.currencyText, selected && styles.currencyTextSelected]}>{option}</Typography>
-              </TouchableOpacity>;
-            })}
-          </View>
           {isEditing && <>
-            <Typography style={styles.currencyNote}>Changing currency updates the label; amounts are not converted.</Typography>
             <View style={styles.editorActions}>
-              <TouchableOpacity onPress={cancelEdit} disabled={isSaving} style={styles.cancel} accessibilityRole="button"><Typography style={styles.editText}>Cancel</Typography></TouchableOpacity>
-              <Button title="Save Financial Profile" onPress={handleSave} isLoading={isSaving || isLoading}
+              <TouchableOpacity onPress={cancelEdit} disabled={isSaving} style={styles.cancel} accessibilityRole="button"><Typography style={styles.editText}>{t("Cancel")}</Typography></TouchableOpacity>
+              <Button title={t("Save Financial Profile")} onPress={handleSave} isLoading={isSaving || isLoading}
                 disabled={!!incomeError || !!expensesError || !user} style={styles.saveButton} />
             </View>
           </>}
+          <LanguageSelector dirty={isEditing} disabled={isSaving || isLoading} />
           <TouchableOpacity onPress={handleSignOutConfirm} disabled={isSaving} style={styles.signOut} accessibilityRole="button">
-            <Icon name="logout" size={18} color="#A46D5B" /><Typography style={styles.signOutText}>Sign out</Typography>
+            <Icon name="logout" size={18} color="#A46D5B" /><Typography style={styles.signOutText}>{t("Sign out")}</Typography>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -225,7 +214,7 @@ const styles = StyleSheet.create({
   lower: { paddingHorizontal: 16 },
   setupCard: { marginTop: -24, backgroundColor: '#656349', borderRadius: 22, padding: 17, overflow: 'hidden', borderWidth: 1, borderColor: '#A49E7D', marginBottom: 17 },
   configuredCard: { backgroundColor: '#3A5C4F', borderColor: '#77977D' },
-  setupArc: { position: 'absolute', width: 190, height: 190, borderRadius: 95, borderWidth: 1, borderColor: 'rgba(236,223,175,0.23)', right: -30, top: -88, transform: [{ scaleX: 1.7 }, { rotate: '-35deg' }] },
+  setupArc: { position: 'absolute', width: 190, height: 190, borderRadius: 95, borderWidth: 1, borderColor: 'rgba(236,223,175,0.23)', end: -30, top: -88, transform: [{ scaleX: 1.7 }, { rotate: '-35deg' }] },
   setupTop: { flexDirection: 'row', gap: 11, alignItems: 'flex-start' },
   setupIcon: { width: 36, paddingTop: 5 },
   setupCopy: { flex: 1, minWidth: 0 },

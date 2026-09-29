@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import React, { useEffect } from 'react';
 import { View, StyleSheet, TouchableOpacity } from 'react-native';
 import { Link, router } from 'expo-router';
@@ -56,18 +57,15 @@ export default function RegisterScreen() {
         </View>
         <Typography style={styles.brandTitle}>DABBARHA</Typography>
         <Typography variant="body" color={colors.textSecondary} align="center" style={styles.subtitle}>
-          Smart Financial Control Center
-        </Typography>
+          {t("Smart Financial Control Center")}</Typography>
       </View>
 
       {/* Registration Form Card */}
       <View style={styles.formCard}>
         <Typography style={styles.formHeading}>
-          Create Account
-        </Typography>
+          {t("Create Account")}</Typography>
         <Typography variant="body" color={colors.textSecondary} style={styles.formSub}>
-          Start managing your cashflow and commitments
-        </Typography>
+          {t("Start managing your cashflow and commitments")}</Typography>
 
         <ErrorBanner message={error} onDismiss={clearError} />
 
@@ -76,8 +74,8 @@ export default function RegisterScreen() {
           name="name"
           render={({ field: { onChange, onBlur, value } }) => (
             <Input
-              label="Full Name *"
-              placeholder="e.g. Ahmed Mohamed"
+              label={t("Full Name *")}
+              placeholder={t("e.g. Ahmed Mohamed")}
               value={value}
               onChangeText={(text) => {
                 if (error) clearError();
@@ -94,7 +92,7 @@ export default function RegisterScreen() {
           name="email"
           render={({ field: { onChange, onBlur, value } }) => (
             <Input
-              label="Email Address *"
+              label={t("Email Address *")}
               placeholder="user@example.com"
               keyboardType="email-address"
               autoCapitalize="none"
@@ -115,8 +113,8 @@ export default function RegisterScreen() {
           name="password"
           render={({ field: { onChange, onBlur, value } }) => (
             <Input
-              label="Password *"
-              placeholder="At least 6 characters"
+              label={t("Password *")}
+              placeholder={t("At least 6 characters")}
               isPassword
               value={value}
               onChangeText={(text) => {
@@ -130,7 +128,7 @@ export default function RegisterScreen() {
         />
 
         <Button
-          title="Create Account"
+          title={t("Create Account")}
           onPress={handleSubmit(onSubmit)}
           isLoading={isLoading}
           style={styles.submitButton}
@@ -138,13 +136,12 @@ export default function RegisterScreen() {
 
         <View style={styles.footerRow}>
           <Typography variant="caption" color={colors.textSecondary}>
-            Already have an account?{' '}
+            {t("Already have an account?")}{' '}
           </Typography>
           <Link href="/(auth)/login" asChild>
             <TouchableOpacity activeOpacity={0.7}>
               <Typography style={styles.linkText}>
-                Sign In
-              </Typography>
+                {t("Sign In")}</Typography>
             </TouchableOpacity>
           </Link>
         </View>

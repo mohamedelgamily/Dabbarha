@@ -1,3 +1,4 @@
+import { t, classificationLabel, monthCount } from '@/i18n';
 import React, { useState } from 'react';
 import {
   View,
@@ -23,7 +24,7 @@ import { Button } from '@/components/common/Button';
 import { Icon } from '@/components/common/Icon';
 import { ErrorBanner } from '@/components/common/ErrorBanner';
 import { colors, spacing, borderRadius } from '@/constants/theme';
-import { formatCurrency, formatMonthLabel, getTodayDateString } from '@/utils/format';
+import { formatCurrency, formatMonthLabel, formatPercent, getTodayDateString } from '@/utils/format';
 
 const affordabilitySchema = z.object({
   amount: z
@@ -91,7 +92,7 @@ export default function AffordabilityScreen() {
       return affordabilityApi.evaluateAffordability(data);
     },
     onError: (err) => {
-      setApiError(err?.message || 'Failed to evaluate affordability analysis.');
+      setApiError(err?.message || t("Failed to evaluate affordability analysis."));
     },
   });
 
@@ -150,7 +151,7 @@ export default function AffordabilityScreen() {
   const verdictStyle = result ? getVerdictStyle(result.classification) : null;
 
   return (
-    <ScreenWrapper>
+    <ScreenWrapper backgroundColor={colors.canvas}>
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
@@ -162,24 +163,21 @@ export default function AffordabilityScreen() {
             onPress={() => router.back()}
             style={styles.backTouch}
             accessibilityRole="button"
-            accessibilityLabel="Back"
+            accessibilityLabel={t("Back")}
           >
             <Icon name="arrow-left" size={20} color={colors.textPrimary} />
           </TouchableOpacity>
-          <Typography style={styles.navTitle}>Affordability Simulator</Typography>
+          <Typography style={styles.navTitle}>{t("Affordability Simulator")}</Typography>
           <View style={{ width: 32 }} />
         </View>
 
         <View style={styles.headerBlock}>
           <Typography variant="caption" style={styles.kicker}>
-            DECISION ENGINE
-          </Typography>
+            {t("DECISION ENGINE")}</Typography>
           <Typography style={styles.screenHeading}>
-            Test Purchase Fit
-          </Typography>
+            {t("Test Purchase Fit")}</Typography>
           <Typography variant="body" color={colors.textSecondary} style={styles.subtitle}>
-            Simulate how a new loan, installment, or expense impacts your future cashflow.
-          </Typography>
+            {t("Simulate how a new loan, installment, or expense impacts your future cashflow.")}</Typography>
         </View>
 
         {/* Missing Financial Profile Warning */}
@@ -194,11 +192,9 @@ export default function AffordabilityScreen() {
             </View>
             <View style={styles.promptTextCol}>
               <Typography style={styles.promptTitle}>
-                Financial Profile Recommended
-              </Typography>
+                {t("Financial Profile Recommended")}</Typography>
               <Typography style={styles.promptDesc}>
-                Set your monthly income and fixed expenses in Profile to get a calibrated decision verdict.
-              </Typography>
+                {t("Set your monthly income and fixed expenses in Profile to get a calibrated decision verdict.")}</Typography>
             </View>
             <Icon name="chevron-right" size={16} tone="muted" />
           </TouchableOpacity>
@@ -216,7 +212,7 @@ export default function AffordabilityScreen() {
             name="amount"
             render={({ field: { onChange, onBlur, value } }) => (
               <Input
-                label="Commitment / Purchase Total *"
+                label={t("Commitment / Purchase Total *")}
                 placeholder="0.00"
                 keyboardType="decimal-pad"
                 value={value}
@@ -228,7 +224,7 @@ export default function AffordabilityScreen() {
                 error={errors.amount?.message}
                 helperText={
                   estimatedMonthly > 0
-                    ? `Estimated monthly outflow: ${formatCurrency(estimatedMonthly, currency)}/mo`
+                    ? t('Estimated monthly outflow: {amount}/mo', { amount: formatCurrency(estimatedMonthly, currency) })
                     : undefined
                 }
               />
@@ -238,8 +234,7 @@ export default function AffordabilityScreen() {
           {/* Quick Term Presets */}
           <View style={styles.presetSection}>
             <Typography variant="label" style={styles.presetLabel}>
-              Term Presets (Months)
-            </Typography>
+              {t("Term Presets (Months)")}</Typography>
             <View style={styles.presetsRow}>
               {TERM_PRESETS.map((term) => {
                 const isSelected = watchedTerm === term;
@@ -259,7 +254,7 @@ export default function AffordabilityScreen() {
                         isSelected && styles.presetChipTextSelected,
                       ]}
                     >
-                      {term} mo
+                      {monthCount(term)}
                     </Typography>
                   </TouchableOpacity>
                 );
@@ -274,7 +269,7 @@ export default function AffordabilityScreen() {
                 name="term_months"
                 render={({ field: { onChange, onBlur, value } }) => (
                   <Input
-                    label="Custom Term *"
+                    label={t("Custom Term *")}
                     placeholder="12"
                     keyboardType="number-pad"
                     value={value}
@@ -295,7 +290,7 @@ export default function AffordabilityScreen() {
                 name="start_date"
                 render={({ field: { onChange, onBlur, value } }) => (
                   <Input
-                    label="Start Date *"
+                    dateInput label={t("Start Date *")}
                     placeholder="2026-09-01"
                     value={value}
                     onChangeText={(text) => {
@@ -311,7 +306,7 @@ export default function AffordabilityScreen() {
           </View>
 
           <Button
-            title="Evaluate Affordability"
+            title={t("Evaluate Affordability")}
             onPress={handleSubmit(onSubmit)}
             isLoading={mutation.isPending}
             style={styles.submitBtn}
@@ -323,8 +318,7 @@ export default function AffordabilityScreen() {
           <View style={styles.resultSection}>
             <View style={styles.resultHeadingRow}>
               <Typography style={styles.resultSectionHeading}>
-                Verdict Analysis
-              </Typography>
+                {t("Verdict Analysis")}</Typography>
             </View>
 
             {/* Verdict Hero Card */}
@@ -337,15 +331,14 @@ export default function AffordabilityScreen() {
               <View style={styles.verdictTopRow}>
                 <View style={styles.verdictStatusCol}>
                   <Typography style={styles.verdictKicker}>
-                    CLASSIFICATION
-                  </Typography>
+                    {t("CLASSIFICATION")}</Typography>
                   <Typography
                     style={[
                       styles.verdictTitle,
                       { color: verdictStyle.accent },
                     ]}
                   >
-                    {result.classification}
+                    {classificationLabel(result.classification)}
                   </Typography>
                 </View>
 
@@ -364,12 +357,12 @@ export default function AffordabilityScreen() {
                       { color: verdictStyle.textColor },
                     ]}
                   >
-                    {result.worst_buffer_percentage}% Margin
+                    {t('Margin: {percent}', { percent: formatPercent(result.worst_buffer_percentage) })}
                   </Typography>
                 </View>
               </View>
 
-              <Typography style={styles.verdictExplanation}>
+              <Typography direction="auto" style={styles.verdictExplanation}>
                 {result.explanation}
               </Typography>
 
@@ -378,8 +371,7 @@ export default function AffordabilityScreen() {
               <View style={styles.verdictMetricsGrid}>
                 <View style={styles.verdictMetric}>
                   <Typography style={styles.verdictMetricLabel}>
-                    WORST BUFFER
-                  </Typography>
+                    {t("WORST BUFFER")}</Typography>
                   <Typography
                     style={[
                       styles.verdictMetricValue,
@@ -394,8 +386,7 @@ export default function AffordabilityScreen() {
 
                 <View style={styles.verdictMetric}>
                   <Typography style={styles.verdictMetricLabel}>
-                    BOTTLENECK MONTH
-                  </Typography>
+                    {t("BOTTLENECK MONTH")}</Typography>
                   <Typography style={styles.verdictMetricValueLight}>
                     {formatMonthLabel(result.worst_month)}
                   </Typography>
@@ -406,8 +397,7 @@ export default function AffordabilityScreen() {
             {/* Monthly Breakdown Timeline */}
             <View style={styles.breakdownSection}>
               <Typography style={styles.breakdownHeading}>
-                Commitment Period Impact
-              </Typography>
+                {t("Commitment Period Impact")}</Typography>
 
               <View style={styles.breakdownList}>
                 {result.monthly_results.map((m) => {
@@ -424,13 +414,13 @@ export default function AffordabilityScreen() {
                             isNeg && styles.breakdownBufferDanger,
                           ]}
                         >
-                          {formatCurrency(m.projected_buffer, currency)} buffer
+                          {t('Buffer: {amount}', { amount: formatCurrency(m.projected_buffer, currency) })}
                         </Typography>
                       </View>
 
                       <View style={styles.breakdownSub}>
                         <Typography style={styles.breakdownPayment}>
-                          Installment: {formatCurrency(m.proposed_commitment_amount, currency)}
+                          {t("Installment:")} {formatCurrency(m.proposed_commitment_amount, currency)}
                         </Typography>
                         <Typography
                           style={[
@@ -438,7 +428,7 @@ export default function AffordabilityScreen() {
                             isNeg && styles.breakdownStatusDanger,
                           ]}
                         >
-                          {isNeg ? 'Deficit' : 'Sustainable'}
+                          {isNeg ? t("Deficit") : t("Sustainable")}
                         </Typography>
                       </View>
                     </View>
@@ -519,11 +509,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#CCFBF1',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: spacing.md,
+    marginEnd: spacing.md,
   },
   promptTextCol: {
     flex: 1,
-    marginRight: spacing.sm,
+    marginEnd: spacing.sm,
   },
   promptTitle: {
     fontSize: 13,

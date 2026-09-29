@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import React, { useState } from 'react';
 import {
   View,
@@ -10,6 +11,7 @@ import {
 } from 'react-native';
 import { colors, spacing, borderRadius, typography } from '@/constants/theme';
 import { Typography } from './Typography';
+import { isArabic, normalizeNumericInput, translateMessage } from '@/i18n';
 
 interface InputProps extends TextInputProps {
   label?: string;
@@ -17,6 +19,8 @@ interface InputProps extends TextInputProps {
   helperText?: string;
   containerStyle?: StyleProp<ViewStyle>;
   isPassword?: boolean;
+  numeric?: boolean;
+  dateInput?: boolean;
 }
 
 export function Input({
@@ -25,11 +29,15 @@ export function Input({
   helperText,
   containerStyle,
   isPassword = false,
+  numeric = false,
+  dateInput = false,
   style,
   ...props
 }: InputProps) {
   const [isFocused, setIsFocused] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const isNumeric = numeric || props.keyboardType === 'decimal-pad' || props.keyboardType === 'number-pad' || props.keyboardType === 'numeric';
+  const ltr = isNumeric || dateInput || isPassword || props.keyboardType === 'email-address';
 
   return (
     <View style={[styles.container, containerStyle]}>
@@ -47,21 +55,25 @@ export function Input({
         ]}
       >
         <TextInput
-          style={[styles.input, style]}
+          style={[styles.input, style, { textAlign: 'left', direction: ltr ? 'ltr' : isArabic() ? 'rtl' : 'ltr', writingDirection: ltr ? 'ltr' : 'auto' }, isArabic() && !ltr && { fontFamily: 'NotoNaskhArabic', lineHeight: 27 }]}
           placeholderTextColor={colors.textMuted}
           secureTextEntry={isPassword && !showPassword}
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
           {...props}
+          accessibilityLabel={props.accessibilityLabel || label}
+          onChangeText={(value) => props.onChangeText?.(isNumeric || dateInput ? normalizeNumericInput(value) : value)}
         />
         {isPassword ? (
           <TouchableOpacity
             style={styles.toggleButton}
             onPress={() => setShowPassword((prev) => !prev)}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={showPassword ? t('Hide') : t('Show')}
           >
             <Typography variant="caption" color={colors.primary}>
-              {showPassword ? 'Hide' : 'Show'}
+              {showPassword ? t("Hide") : t("Show")}
             </Typography>
           </TouchableOpacity>
         ) : null}
@@ -69,7 +81,7 @@ export function Input({
 
       {error ? (
         <Typography variant="error" style={styles.errorText}>
-          {error}
+          {translateMessage(error)}
         </Typography>
       ) : helperText ? (
         <Typography variant="caption" style={styles.helperText}>
@@ -113,7 +125,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
   },
   toggleButton: {
-    paddingLeft: spacing.sm,
+    paddingStart: spacing.sm,
   },
   errorText: {
     marginTop: spacing.xs,

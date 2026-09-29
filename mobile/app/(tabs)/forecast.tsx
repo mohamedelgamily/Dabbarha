@@ -1,6 +1,8 @@
+import { t, monthCount } from '@/i18n';
 import React, { useState } from 'react';
 import {
   View,
+  type DimensionValue,
   StyleSheet,
   ScrollView,
   RefreshControl,
@@ -54,14 +56,14 @@ export default function ForecastScreen() {
             onPress={() => router.canGoBack() ? router.back() : router.replace('/(tabs)')}
             style={styles.backTouch}
             accessibilityRole="button"
-            accessibilityLabel="Back"
+            accessibilityLabel={t("Back")}
           >
             <Icon name="arrow-left" size={20} color="#E3EDE4" />
           </TouchableOpacity>
-          <View style={styles.navCopy}><Typography style={styles.navTitle}>Cashflow Forecast</Typography><Typography style={styles.navSubtitle}>See your financial runway ahead</Typography></View>
+          <View style={styles.navCopy}><Typography style={styles.navTitle}>{t("Cashflow Forecast")}</Typography><Typography style={styles.navSubtitle}>{t("See what is left each month")}</Typography></View>
           <View style={{ width: 36 }} />
         </View>
-        <View style={{ flex: 1, backgroundColor: "#F6F4EF" }}><LoadingIndicator message="Loading cashflow forecast..." /></View>
+        <View style={{ flex: 1, backgroundColor: "#F6F4EF" }}><LoadingIndicator message={t("Loading cashflow forecast...")} /></View>
       </ScreenWrapper>
     );
   }
@@ -74,21 +76,21 @@ export default function ForecastScreen() {
             onPress={() => router.canGoBack() ? router.back() : router.replace('/(tabs)')}
             style={styles.backTouch}
             accessibilityRole="button"
-            accessibilityLabel="Back"
+            accessibilityLabel={t("Back")}
           >
             <Icon name="arrow-left" size={20} color="#E3EDE4" />
           </TouchableOpacity>
-          <View style={styles.navCopy}><Typography style={styles.navTitle}>Cashflow Forecast</Typography><Typography style={styles.navSubtitle}>See your financial runway ahead</Typography></View>
+          <View style={styles.navCopy}><Typography style={styles.navTitle}>{t("Cashflow Forecast")}</Typography><Typography style={styles.navSubtitle}>{t("See what is left each month")}</Typography></View>
           <View style={{ width: 36 }} />
         </View>
         <ErrorBanner
           message={
             error?.message ||
-            'Unable to load forecast data. Please check your connection.'
+            t("Unable to load forecast data. Please check your connection.")
           }
         />
         <Button
-          title="Try Again" variant="secondary"
+          title={t("Try Again")} variant="secondary"
           onPress={() => refetch()}
           style={styles.retryButton}
         />
@@ -98,7 +100,6 @@ export default function ForecastScreen() {
 
   const rows = forecast?.rows || [];
   const hasIncome = user?.monthly_income != null && Number(user.monthly_income) > 0;
-  const hasAnyNegative = rows.some((r) => r.has_negative_buffer);
 
   // Chart geometry only: use the same magnitude scale and zero line for all months.
   // Without income, visualize known outflows instead of implying forecast accuracy.
@@ -106,11 +107,12 @@ export default function ForecastScreen() {
     ? Number(row.projected_buffer || 0)
     : -(Number(row.fixed_expenses || 0) + Number(row.obligation_payments || 0)));
   const maxBuffer = Math.max(1, ...chartValues.map(Math.abs));
-  const hasPositive = chartValues.some((value) => value > 0);
-  const hasNegative = chartValues.some((value) => value < 0);
-  const baseline = hasNegative ? (hasPositive ? 36 : 0) : 72;
-  const positiveSpace = baseline;
-  const negativeSpace = 72 - baseline;
+  const buffers = rows.map((row) => Number(row.projected_buffer));
+  const allEqual = buffers.every((value) => value === buffers[0]);
+  const change = buffers.length ? buffers[buffers.length - 1] - buffers[0] : 0;
+  const attentionRow = rows.filter((row) => row.has_negative_buffer)
+    .reduce<ForecastMonthResponse | undefined>((lowest, row) =>
+      !lowest || Number(row.projected_buffer) < Number(lowest.projected_buffer) ? row : lowest, undefined);
   const selectedRow: ForecastMonthResponse | undefined = rows[selectedMonthIndex] || rows[0];
 
   return (
@@ -135,72 +137,85 @@ export default function ForecastScreen() {
             onPress={() => router.canGoBack() ? router.back() : router.replace('/(tabs)')}
             style={styles.backTouch}
             accessibilityRole="button"
-            accessibilityLabel="Back"
+            accessibilityLabel={t("Back")}
           >
             <Icon name="arrow-left" size={20} color="#E3EDE4" />
           </TouchableOpacity>
-          <View style={styles.navCopy}><Typography style={styles.navTitle}>Cashflow Forecast</Typography><Typography style={styles.navSubtitle}>See your financial runway ahead</Typography></View>
+          <View style={styles.navCopy}><Typography style={styles.navTitle}>{t("Cashflow Forecast")}</Typography><Typography style={styles.navSubtitle}>{t("See what is left each month")}</Typography></View>
           <View style={{ width: 36 }} />
         </View>
 
         <View style={styles.headerBlock}>
-          <View style={styles.rangePill}><Typography style={styles.rangeLabel}>{months} Months</Typography></View>
-          <Typography style={styles.runwayTitle}>Financial Runway</Typography>
+          <View style={styles.rangePill}><Typography style={styles.rangeLabel}>{monthCount(months)}</Typography></View>
+          <Typography style={styles.runwayTitle}>{t("Monthly comparison")}</Typography>
         </View>
         {/* Hero Trajectory Visualizer */}
         <View style={styles.heroTrajectoryCard}>
           <View style={styles.heroTopRow}>
             <View style={styles.heroHeaderCol}>
-              <Typography style={styles.heroKicker}>{hasIncome ? 'Projected Net Surplus' : 'Known Monthly Commitments'}</Typography>
+              <Typography style={styles.heroKicker}>{hasIncome ? (selectedRow?.has_negative_buffer ? t("Expected shortfall") : t("Expected money left")) : t("Known Monthly Commitments")}</Typography>
               <Typography style={[styles.heroAmount, hasIncome && selectedRow?.has_negative_buffer && styles.amountNegative]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.45} accessibilityLiveRegion="polite">
                 {selectedRow ? formatCurrency(hasIncome ? selectedRow.projected_buffer
-                  : Number(selectedRow.fixed_expenses || 0) + Number(selectedRow.obligation_payments || 0), currency) : 'No forecast data'}
+                  : Number(selectedRow.fixed_expenses || 0) + Number(selectedRow.obligation_payments || 0), currency) : t("No forecast data")}
               </Typography>
-              {!hasIncome && <Typography style={styles.chartNote}>Outflows only Â· income not configured</Typography>}
-              {hasIncome && selectedRow?.has_negative_buffer && <Typography style={styles.amountNegative}>Projected deficit</Typography>}
+              {hasIncome && <Typography style={styles.chartNote}>{t("After income, fixed expenses, and obligations.")}</Typography>}
+              {!hasIncome && <Typography style={styles.chartNote}>{t("Outflows only · income not configured")}</Typography>}
+              {hasIncome && selectedRow?.has_negative_buffer && <Typography style={styles.amountNegative}>{t("Projected deficit")}</Typography>}
             </View>
             {selectedRow && <View style={styles.monthPill}><Typography style={styles.monthPillText}>{formatMonthLabel(selectedRow.month)}</Typography></View>}
           </View>
-          {/* Interactive Runway Visual Progression Bars */}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.runwayBarsContainer}>
+          {hasIncome && rows.length > 0 && <View style={styles.comparisonSummary}>
+            <Typography style={styles.chartNote}>{allEqual
+              ? t("The same amount is expected every month.")
+              : t("From {first} to {last}: {change}.", {
+                  first: formatMonthLabel(rows[0].month), last: formatMonthLabel(rows[rows.length - 1].month),
+                  change: change > 0 ? t("up by {amount}", { amount: formatCurrency(change, currency) })
+                    : change < 0 ? t("down by {amount}", { amount: formatCurrency(Math.abs(change), currency) })
+                    : t("unchanged overall, with changes in between"),
+                })}</Typography>
+            {attentionRow && <Typography style={[styles.chartNote, styles.amountNegative]}>{t("Largest shortfall: {month}, {amount}.", {
+              month: formatMonthLabel(attentionRow.month), amount: formatCurrency(Math.abs(Number(attentionRow.projected_buffer)), currency),
+            })}</Typography>}
+          </View>}
+          <View style={styles.comparisonList}>
             {rows.map((row, idx) => {
               const value = chartValues[idx];
-              const negative = value < 0;
-              const height = Math.abs(value) / maxBuffer * (negative ? negativeSpace : positiveSpace);
               const selected = row.month === selectedRow?.month;
-              return <TouchableOpacity key={row.month} onPress={() => setSelectedMonthIndex(idx)} style={styles.barColumn}
-                accessibilityRole="button" accessibilityState={{ selected }}
-                accessibilityLabel={formatMonthLabel(row.month) + ': ' + (hasIncome ? 'projected buffer ' : 'known outflows ') + formatCurrency(hasIncome ? value : Math.abs(value), currency)}>
-                <View style={[styles.barTrack, selected && styles.trackSelected]}>
-                  <View style={[styles.zeroLine, { top: baseline }]} />
-                  {value === 0 ? <View style={[styles.zeroDot, { top: baseline - 3 }]} /> :
-                    <View style={[styles.barFill, {
-                      height, top: negative ? baseline : baseline - height,
-                      backgroundColor: !hasIncome ? '#8CB6AE' : negative ? '#C27F70' : selected ? '#8ED8BF' : '#3C9682',
-                    }]} />}
+              return <TouchableOpacity key={row.month} onPress={() => setSelectedMonthIndex(idx)}
+                style={[styles.comparisonRow, selected && styles.comparisonSelected]}
+                accessibilityRole="button" accessibilityState={{ selected }}>
+                <View style={styles.comparisonHeading}>
+                  <Typography style={styles.monthBarLabel}>{formatMonthLabel(row.month)}</Typography>
+                  <Typography style={[styles.comparisonValue, hasIncome && value < 0 && styles.amountNegative]}>
+                    {formatCurrency(hasIncome ? value : Math.abs(value), currency)}
+                  </Typography>
                 </View>
-                <Typography style={[styles.monthBarLabel, selected && styles.monthBarLabelSelected]}>{formatMonthLabel(row.month).split(' ')[0]}</Typography>
-                <Typography style={styles.barYear}>{row.month.slice(0, 4)}</Typography>
+                <View style={styles.comparisonTrack}>
+                  <View style={styles.comparisonZero} />
+                  {value !== 0 && <View style={{
+                    position: 'absolute', height: 5, borderRadius: 3,
+                    start: ((value < 0 ? 50 - Math.abs(value) / maxBuffer * 50 : 50) + '%') as DimensionValue,
+                    width: (Math.abs(value) / maxBuffer * 50 + '%') as DimensionValue,
+                    backgroundColor: !hasIncome ? '#8CB6AE' : value < 0 ? '#C27F70' : '#8ED8BF',
+                  }} />}
+                </View>
               </TouchableOpacity>;
             })}
-          </ScrollView>
-          {rows.length > 0 && <Typography style={styles.scaleLabel}>
-            Shared scale Â· {formatCurrency(maxBuffer, currency)} {hasPositive && hasNegative ? 'either side of zero' : 'from zero'}
-          </Typography>}
+          </View>
           {/* Selected Month Financial Equation Breakdown */}
           {selectedRow && (
             <View style={styles.equationGrid}>
               <View style={styles.equationItem}>
-                <View style={styles.metricHeading}><Icon name="arrow-up" size={13} color="#91CBB4" /><Typography style={styles.equationLabel}>Income</Typography></View>
+                <View style={styles.metricHeading}><Icon name="arrow-up" size={13} color="#91CBB4" /><Typography style={styles.equationLabel}>{t("Income")}</Typography></View>
                 <Typography style={styles.equationValueSuccess}>
-                  {hasIncome ? formatCurrency(selectedRow.income, currency) : 'Not configured'}
+                  {hasIncome ? formatCurrency(selectedRow.income, currency) : t("Not configured")}
                 </Typography>
               </View>
 
               <View style={styles.equationDivider} />
 
               <View style={styles.equationItem}>
-                <View style={styles.metricHeading}><Icon name="arrow-down" size={13} color="#D1AF87" /><Typography style={styles.equationLabel}>Fixed Expenses</Typography></View>
+                <View style={styles.metricHeading}><Icon name="arrow-down" size={13} color="#D1AF87" /><Typography style={styles.equationLabel}>{t("Fixed Expenses")}</Typography></View>
                 <Typography style={styles.equationValue}>
                   {formatCurrency(selectedRow.fixed_expenses, currency)}
                 </Typography>
@@ -209,7 +224,7 @@ export default function ForecastScreen() {
               <View style={styles.equationDivider} />
 
               <View style={styles.equationItem}>
-                <View style={styles.metricHeading}><Icon name="credit-card" size={13} color="#96BAC5" /><Typography style={styles.equationLabel}>Obligations</Typography></View>
+                <View style={styles.metricHeading}><Icon name="credit-card" size={13} color="#96BAC5" /><Typography style={styles.equationLabel}>{t("Obligations")}</Typography></View>
                 <Typography style={styles.equationValue}>
                   {formatCurrency(selectedRow.obligation_payments, currency)}
                 </Typography>
@@ -221,34 +236,17 @@ export default function ForecastScreen() {
         {!hasIncome && <TouchableOpacity onPress={() => router.push('/(tabs)/profile')} style={styles.profilePromptBanner} accessibilityRole="button">
           <View style={styles.promptIconWrap}><Icon name="settings" size={20} color="#447B68" /></View>
           <View style={styles.promptTextCol}>
-            <Typography style={styles.promptTitle}>Complete your financial profile</Typography>
-            <Typography style={styles.promptDesc}>Add monthly income and fixed expenses to generate an accurate cashflow forecast.</Typography>
-            <Typography style={styles.profileLink}>Set up profile â†’</Typography>
+            <Typography style={styles.promptTitle}>{t("Complete your financial profile")}</Typography>
+            <Typography style={styles.promptDesc}>{t("Add monthly income and fixed expenses to generate an accurate cashflow forecast.")}</Typography>
+            <Typography style={styles.profileLink}>{t("Set up profile")}</Typography>
           </View>
         </TouchableOpacity>}
-        {hasIncome && hasAnyNegative && (
-          <View style={styles.warningBanner}>
-            <View style={styles.warningIconWrap}>
-              <Icon name="alert-triangle" size={18} color={colors.error} />
-            </View>
-            <View style={styles.warningContent}>
-              <Typography style={styles.warningTitle}>
-                Potential Deficit Detected
-              </Typography>
-              <Typography style={styles.warningDesc}>
-                One or more upcoming months project commitments exceeding monthly income.
-              </Typography>
-            </View>
-          </View>
-        )}
-
         {/* Timeline Sequence */}
         <View style={styles.timelineSection}>
           <Typography style={styles.timelineSectionTitle}>
-            Monthly Breakdown
-          </Typography>
+            {t("Monthly Breakdown")}</Typography>
 
-          <View style={styles.timelineList}>{rows.length === 0 && <Typography style={styles.timelineMeta}>No forecast months were returned for this period.</Typography>}
+          <View style={styles.timelineList}>{rows.length === 0 && <Typography style={styles.timelineMeta}>{t("No forecast months were returned for this period.")}</Typography>}
             {rows.map((row, idx) => {
               const isNeg = row.has_negative_buffer;
               const totalOutflow =
@@ -278,18 +276,19 @@ export default function ForecastScreen() {
                           hasIncome && isNeg && styles.timelineBufferDanger,
                         ]}
                       >
-                        {hasIncome ? formatCurrency(row.projected_buffer, currency) : 'Income not set'}
+                        {hasIncome ? formatCurrency(row.projected_buffer, currency) : t("Income not set")}
                       </Typography>
                     </View>
 
-                    <View style={styles.timelineSubRow}>
-                      <Typography style={styles.timelineMeta}>
-                        Committed: {formatCurrency(totalOutflow, currency)}
-                      </Typography>
-                      <Typography style={[styles.timelineStatus, !hasIncome || Number(row.projected_buffer) === 0 ? styles.pillNeutral : isNeg ? styles.pillDanger : styles.pillSuccess]}>
-                        {!hasIncome ? 'Outflows only' : isNeg ? 'Deficit' : Number(row.projected_buffer) === 0 ? 'Break-even' : 'Safe buffer'}
-                      </Typography>
-                    </View>
+                    <Typography style={styles.timelineMeta}>{!hasIncome ? t("Income not set") : isNeg ? t("Expected shortfall") : t("Expected money left")}</Typography>
+                    {[
+                      [t("Income"), hasIncome ? formatCurrency(row.income, currency) : t("Not configured")],
+                      [t("Fixed Expenses"), formatCurrency(row.fixed_expenses, currency)],
+                      [t("Obligations"), formatCurrency(row.obligation_payments, currency)],
+                    ].map(([label, value]) => <View key={label} style={styles.timelineSubRow}>
+                      <Typography style={styles.timelineMeta}>{label}</Typography>
+                      <Typography style={styles.timelineMeta}>{value}</Typography>
+                    </View>)}
                   </TouchableOpacity>
                 </View>
               );
@@ -304,6 +303,14 @@ export default function ForecastScreen() {
 }
 
 const styles = StyleSheet.create({
+  comparisonSummary: { marginBottom: 12 },
+  comparisonList: { gap: 6, marginBottom: 14 },
+  comparisonRow: { padding: 9, borderRadius: 10, borderWidth: 1, borderColor: 'transparent' },
+  comparisonSelected: { borderColor: '#315F53', backgroundColor: '#0A3D3D' },
+  comparisonHeading: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: 8, marginBottom: 7 },
+  comparisonValue: { fontSize: 13, lineHeight: 20, color: '#ECF2E7', fontVariant: ['tabular-nums'] },
+  comparisonTrack: { height: 5, borderRadius: 3, backgroundColor: '#19464A' },
+  comparisonZero: { position: 'absolute', start: '50%', top: -2, width: 1, height: 9, backgroundColor: '#A2BAAF' },
   scrollContent: { flexGrow: 1, paddingBottom: 30 },
   topNav: { flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: '#02262D', paddingHorizontal: 16, paddingTop: 10, paddingBottom: 18 },
   navCopy: { flex: 1 },
@@ -327,9 +334,9 @@ const styles = StyleSheet.create({
   barColumn: { flex: 1, minWidth: 44, alignItems: 'center', paddingHorizontal: 3 },
   barTrack: { width: 15, height: 78, borderRadius: 8, backgroundColor: '#19464A', overflow: 'hidden', marginBottom: 6, borderTopWidth: 3, borderBottomWidth: 3, borderColor: 'transparent' },
   trackSelected: { backgroundColor: '#2E5F58' },
-  zeroLine: { position: 'absolute', left: 0, right: 0, height: 1, backgroundColor: '#A2BAAF' },
+  zeroLine: { position: 'absolute', start: 0, end: 0, height: 1, backgroundColor: '#A2BAAF' },
   zeroDot: { position: 'absolute', width: 6, height: 6, borderRadius: 3, alignSelf: 'center', backgroundColor: '#B4D1C0' },
-  barFill: { position: 'absolute', left: 0, right: 0, borderRadius: 6 },
+  barFill: { position: 'absolute', start: 0, end: 0, borderRadius: 6 },
   monthBarLabel: { fontSize: 11, lineHeight: 16, color: '#A5C1B5' },
   monthBarLabelSelected: { color: '#F4F7EA' },
   barYear: { fontSize: 9, lineHeight: 13, color: '#87A99B' },
@@ -354,9 +361,9 @@ const styles = StyleSheet.create({
   warningDesc: { fontSize: 12, lineHeight: 18, color: '#966956' },
   timelineSection: { paddingHorizontal: 18 },
   timelineSectionTitle: { ...typography.title, fontSize: 19, lineHeight: 26, color: '#244440', marginBottom: 14 },
-  timelineList: { paddingLeft: 0 },
+  timelineList: { paddingStart: 0 },
   timelineItem: { flexDirection: 'row' },
-  timelineLeft: { width: 18, alignItems: 'center', marginRight: 8 },
+  timelineLeft: { width: 18, alignItems: 'center', marginEnd: 8 },
   timelineDot: { width: 9, height: 9, borderRadius: 5, marginTop: 18 },
   dotSuccess: { backgroundColor: '#43957C' },
   dotDanger: { backgroundColor: '#BA7766' },

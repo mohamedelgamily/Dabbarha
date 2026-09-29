@@ -1,3 +1,4 @@
+import { t, translateMessage } from '@/i18n';
 import React from 'react';
 import { View, StyleSheet, TouchableOpacity, StyleProp, ViewStyle } from 'react-native';
 import { colors, spacing, borderRadius } from '@/constants/theme';
@@ -20,7 +21,7 @@ export function ErrorBanner({ message, onDismiss, style }: ErrorBannerProps) {
           <Icon name="alert-triangle" size={18} tone="error" />
         </View>
         <Typography variant="error" color={colors.error} style={styles.text}>
-          {message}
+          {translateMessage(message)}
         </Typography>
       </View>
       {onDismiss ? (
@@ -29,7 +30,7 @@ export function ErrorBanner({ message, onDismiss, style }: ErrorBannerProps) {
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           style={styles.dismissButton}
           accessibilityRole="button"
-          accessibilityLabel="Dismiss"
+          accessibilityLabel={t("Dismiss")}
         >
           <Icon name="x" size={16} tone="error" />
         </TouchableOpacity>
@@ -57,7 +58,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   iconWrap: {
-    marginRight: spacing.sm,
+    marginEnd: spacing.sm,
   },
   text: {
     flex: 1,
@@ -65,7 +66,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   dismissButton: {
-    marginLeft: spacing.sm,
+    marginStart: spacing.sm,
     padding: spacing.xs,
   },
 });

@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import React, { useEffect } from 'react';
 import { View, StyleSheet, TouchableOpacity } from 'react-native';
 import { Link } from 'expo-router';
@@ -48,23 +49,15 @@ export default function LoginScreen() {
     <ScreenWrapper scrollable>
       {/* Brand Header */}
       <View style={styles.brandContainer}>
-        <View style={styles.logoBadge}>
-          <Logo variant="symbol" tone="dark" width={32} height={32} />
-        </View>
-        <Typography style={styles.brandTitle}>DABBARHA</Typography>
-        <Typography variant="body" color={colors.textSecondary} align="center" style={styles.subtitle}>
-          Financial Planning & Liquidity Management
-        </Typography>
+        <Logo variant="full" tone="dark" width={260} />
       </View>
 
       {/* Login Card */}
       <View style={styles.formCard}>
         <Typography style={styles.formHeading}>
-          Sign In
-        </Typography>
+          {t("Sign In")}</Typography>
         <Typography variant="body" color={colors.textSecondary} style={styles.formSub}>
-          Access your financial control center
-        </Typography>
+          {t("Access your financial control center")}</Typography>
 
         <ErrorBanner message={error} onDismiss={clearError} />
 
@@ -73,7 +66,7 @@ export default function LoginScreen() {
           name="email"
           render={({ field: { onChange, onBlur, value } }) => (
             <Input
-              label="Email Address"
+              label={t("Email Address")}
               placeholder="user@example.com"
               keyboardType="email-address"
               autoCapitalize="none"
@@ -94,7 +87,7 @@ export default function LoginScreen() {
           name="password"
           render={({ field: { onChange, onBlur, value } }) => (
             <Input
-              label="Password"
+              label={t("Password")}
               placeholder="••••••••"
               isPassword
               value={value}
@@ -109,7 +102,7 @@ export default function LoginScreen() {
         />
 
         <Button
-          title="Sign In"
+          title={t("Sign In")}
           onPress={handleSubmit(onSubmit)}
           isLoading={isLoading}
           style={styles.submitButton}
@@ -117,13 +110,12 @@ export default function LoginScreen() {
 
         <View style={styles.footerRow}>
           <Typography variant="caption" color={colors.textSecondary}>
-            Don't have an account?{' '}
+            {t("Don't have an account?")}{' '}
           </Typography>
           <Link href="/(auth)/register" asChild>
             <TouchableOpacity activeOpacity={0.7}>
               <Typography style={styles.linkText}>
-                Create Account
-              </Typography>
+                {t("Create Account")}</Typography>
             </TouchableOpacity>
           </Link>
         </View>

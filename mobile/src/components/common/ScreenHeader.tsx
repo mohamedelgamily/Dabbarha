@@ -11,6 +11,7 @@ interface ScreenHeaderProps {
   rightIcon?: IconName;
   onRightPress?: () => void;
   rightLabel?: string;
+  rightAccessibilityLabel?: string;
   onRightLabelPress?: () => void;
   style?: StyleProp<ViewStyle>;
 }
@@ -21,6 +22,7 @@ export function ScreenHeader({
   rightIcon,
   onRightPress,
   rightLabel,
+  rightAccessibilityLabel,
   onRightLabelPress,
   style,
 }: ScreenHeaderProps) {
@@ -43,7 +45,7 @@ export function ScreenHeader({
         ) : null}
       </View>
       {hasRight ? (
-        <View style={styles.right}>
+        <View style={styles.end}>
           {rightLabel ? (
             <Typography
               variant="bodyBold"
@@ -59,7 +61,7 @@ export function ScreenHeader({
               name={rightIcon}
               variant="soft"
               onPress={onRightPress}
-              accessibilityLabel={rightIcon}
+              accessibilityLabel={rightAccessibilityLabel || rightLabel}
             />
           ) : null}
         </View>
@@ -77,12 +79,12 @@ const styles = StyleSheet.create({
   },
   textCol: {
     flex: 1,
-    marginRight: spacing.md,
+    marginEnd: spacing.md,
   },
   subtitle: {
     marginTop: spacing.xs / 2,
   },
-  right: {
+  end: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,

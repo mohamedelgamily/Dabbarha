@@ -1,3 +1,4 @@
+import { t, translateMessage, isArabic, formatCount } from '@/i18n';
 import React, { useState } from 'react';
 import {
   View,
@@ -26,11 +27,11 @@ import Svg, { Defs, LinearGradient, Stop, Rect, Path, G, Circle } from 'react-na
 import { Car, Smartphone, CreditCard, CalendarDays, ArrowRight } from 'lucide-react-native';
 
 const filters = ['All', 'Active', 'Completed', 'Late'] as const;
-const examples = [
-  { title: 'Car Loan', icon: Car },
-  { title: 'Phone Installment', icon: Smartphone },
-  { title: 'Credit Card', icon: CreditCard },
-  { title: 'Subscriptions', icon: CalendarDays },
+const getExamples = () => [
+  { title: t("Car Loan"), icon: Car },
+  { title: t("Phone Installment"), icon: Smartphone },
+  { title: t("Credit Card"), icon: CreditCard },
+  { title: t("Subscriptions"), icon: CalendarDays },
 ];
 
 function CommitmentIllustration() {
@@ -99,8 +100,8 @@ export default function ObligationsScreen() {
     },
     onError: (err: any) => {
       Alert.alert(
-        'Deletion Failed',
-        err?.message || 'Unable to delete obligation. Please try again.'
+        t("Deletion Failed"),
+        translateMessage(err?.message) || t("Unable to delete obligation. Please try again.")
       );
     },
   });
@@ -117,12 +118,12 @@ export default function ObligationsScreen() {
 
   const handleDeleteConfirm = (obligation: ObligationResponse) => {
     Alert.alert(
-      'Delete Obligation',
-      `Are you sure you want to remove "${obligation.item_name}"? This action cannot be undone.`,
+      t("Delete Obligation"),
+      t('Are you sure you want to remove "{name}"? This action cannot be undone.', { name: obligation.item_name }),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t("Cancel"), style: 'cancel' },
         {
-          text: 'Delete',
+          text: t("Delete"),
           style: 'destructive',
           onPress: () => deleteMutation.mutate(obligation.id),
         },
@@ -147,10 +148,10 @@ export default function ObligationsScreen() {
       <View style={styles.header}>
         <View style={styles.headerRow}>
           <View style={styles.headerCopy}>
-            <Typography style={styles.title}>Obligations</Typography>
-            <Typography style={styles.subtitle}>All your financial commitments</Typography>
+            <Typography style={styles.title}>{t("Obligations")}</Typography>
+            <Typography style={styles.subtitle}>{t("All your financial commitments")}</Typography>
           </View>
-          <TouchableOpacity onPress={handleOpenAdd} style={styles.addButton} accessibilityRole="button" accessibilityLabel="Add commitment">
+          <TouchableOpacity onPress={handleOpenAdd} style={styles.addButton} accessibilityRole="button" accessibilityLabel={t("Add commitment")}>
             <Icon name="plus" size={24} color={colors.primary} strokeWidth={1.5} />
           </TouchableOpacity>
         </View>
@@ -158,22 +159,22 @@ export default function ObligationsScreen() {
           {filters.map((label) => (
             <TouchableOpacity key={label} style={[styles.filter, label === filter && styles.filterSelected]}
               onPress={() => setFilter(label)} accessibilityRole="button" accessibilityState={{ selected: label === filter }}>
-              <Typography style={[styles.filterText, label === filter && styles.filterTextSelected]}>{label}</Typography>
+              <Typography style={[styles.filterText, label === filter && styles.filterTextSelected]}>{translateMessage(label)}</Typography>
             </TouchableOpacity>
           ))}
         </View>
       </View>
       {items.length > 0 && <View style={styles.summary}>
         <View style={styles.summaryCell}>
-          <Typography style={styles.summaryLabel}>Monthly total</Typography>
+          <Typography style={styles.summaryLabel}>{t("Monthly total")}</Typography>
           <Typography style={styles.summaryValue} adjustsFontSizeToFit numberOfLines={1}>{formatCurrency(totalMonthly, currency)}</Typography>
         </View>
         <View style={styles.summaryCell}>
-          <Typography style={styles.summaryLabel}>Active</Typography>
-          <Typography style={styles.summaryValue}>{activeItems.length}</Typography>
+          <Typography style={styles.summaryLabel}>{t("Active")}</Typography>
+          <Typography style={styles.summaryValue}>{formatCount(activeItems.length)}</Typography>
         </View>
         <View style={styles.summaryCell}>
-          <Typography style={styles.summaryLabel}>Total value</Typography>
+          <Typography style={styles.summaryLabel}>{t("Total value")}</Typography>
           <Typography style={styles.summaryValue} adjustsFontSizeToFit numberOfLines={1}>{formatCurrency(totalPortfolioValue, currency)}</Typography>
         </View>
       </View>}
@@ -192,31 +193,31 @@ export default function ObligationsScreen() {
           </View>
         )}
         ListEmptyComponent={
-          isLoading ? <LoadingIndicator message="Loading commitments..." /> :
+          isLoading ? <LoadingIndicator message={t("Loading commitments...")} /> :
           isError ? <View style={styles.state}>
-            <ErrorBanner message={(error as any)?.message || 'Failed to load obligations. Please check your connection.'} />
-            <Button title="Try Again" onPress={() => refetch()} />
+            <ErrorBanner message={(error as any)?.message || t("Failed to load obligations. Please check your connection.")} />
+            <Button title={t("Try Again")} onPress={() => refetch()} />
           </View> :
           items.length > 0 ? <View style={styles.filteredEmpty}>
-            <Typography style={styles.emptyTitle}>No {filter.toLowerCase()} commitments</Typography>
-            <Typography style={styles.emptyText}>Try another filter to view your commitments.</Typography>
-            <Button title="View all commitments" onPress={() => setFilter('All')} variant="outline" />
+            <Typography style={styles.emptyTitle}>{t('No commitments with status: {status}', { status: translateMessage(filter) })}</Typography>
+            <Typography style={styles.emptyText}>{t("Try another filter to view your commitments.")}</Typography>
+            <Button title={t("View all commitments")} onPress={() => setFilter('All')} variant="outline" />
           </View> :
           <View style={styles.emptyComposition}>
             <View style={styles.emptyCard}>
               <CommitmentIllustration />
               <View style={styles.emptyCopy}>
-                <Typography style={styles.emptyTitle}>No commitments yet</Typography>
-                <Typography style={styles.emptyText}>Track your loans, installments, subscriptions and fixed expenses to stay in control of your financial future.</Typography>
-                <TouchableOpacity onPress={handleOpenAdd} style={styles.emptyCta} accessibilityRole="button" accessibilityLabel="Add Your First Commitment">
-                  <Typography style={styles.emptyCtaText}>Add Your First Commitment</Typography>
-                  <ArrowRight size={18} color="#F2F5EA" />
+                <Typography style={styles.emptyTitle}>{t("No commitments yet")}</Typography>
+                <Typography style={styles.emptyText}>{t("Track your loans, installments, subscriptions and fixed expenses to stay in control of your financial future.")}</Typography>
+                <TouchableOpacity onPress={handleOpenAdd} style={styles.emptyCta} accessibilityRole="button" accessibilityLabel={t("Add Your First Commitment")}>
+                  <Typography style={styles.emptyCtaText}>{t("Add Your First Commitment")}</Typography>
+                  <ArrowRight style={isArabic() ? { transform: [{ scaleX: -1 }] } : undefined} size={18} color="#F2F5EA" />
                 </TouchableOpacity>
               </View>
             </View>
-            <Typography style={styles.examplesTitle}>Popular examples</Typography>
+            <Typography style={styles.examplesTitle}>{t("Popular examples")}</Typography>
             <View style={styles.examples}>
-              {examples.map(({ title, icon: ExampleIcon }) => (
+              {getExamples().map(({ title, icon: ExampleIcon }) => (
                 <View key={title} style={styles.example}>
                   <View style={styles.exampleIcon}><ExampleIcon size={23} color="#254549" strokeWidth={1.5} /></View>
                   <Typography style={styles.exampleText}>{title}</Typography>
@@ -262,7 +263,7 @@ const styles = StyleSheet.create({
   emptyText: { fontSize: 13, lineHeight: 20, color: '#617B7C', textAlign: 'center', marginTop: 8, marginBottom: 21, maxWidth: 290 },
   emptyCta: { width: '100%', minHeight: 53, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: '#02262D', borderRadius: 12, paddingHorizontal: 13, paddingVertical: 14 },
   emptyCtaText: { fontSize: 14, lineHeight: 20, color: '#F3F6ED', flexShrink: 1, textAlign: 'center' },
-  examplesTitle: { ...typography.title, fontSize: 15, lineHeight: 22, color: '#294849', marginTop: 24, marginBottom: 12, marginLeft: 2 },
+  examplesTitle: { ...typography.title, fontSize: 15, lineHeight: 22, color: '#294849', marginTop: 24, marginBottom: 12, marginStart: 2 },
   examples: { flexDirection: 'row', gap: 12 },
   example: { flex: 1, minWidth: 0, alignItems: 'center' },
   exampleIcon: { width: '100%', minHeight: 65, borderRadius: 16, backgroundColor: '#FBFAF5', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#EBECE4' },

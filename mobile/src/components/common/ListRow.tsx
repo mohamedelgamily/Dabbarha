@@ -88,7 +88,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primaryMuted,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: spacing.md,
+    marginEnd: spacing.md,
   },
   textCol: {
     flex: 1,
@@ -97,6 +97,6 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   trailing: {
-    marginRight: spacing.sm,
+    marginEnd: spacing.sm,
   },
 });

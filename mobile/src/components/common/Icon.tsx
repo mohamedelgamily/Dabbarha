@@ -40,6 +40,7 @@ import {
   type LucideIcon,
 } from 'lucide-react-native';
 import { colors } from '@/constants/theme';
+import { isArabic } from '@/i18n';
 
 export type IconName =
   | 'alert-triangle'
@@ -157,7 +158,7 @@ export function Icon({
       size={size}
       color={color ?? TONE_COLOR[tone]}
       strokeWidth={strokeWidth}
-      style={style}
+      style={[style, isArabic() && (name === 'arrow-left' || name === 'chevron-right') && { transform: [{ scaleX: -1 }] }]}
     />
   );
 }

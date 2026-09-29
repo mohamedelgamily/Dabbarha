@@ -157,7 +157,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: spacing.sm,
+    marginEnd: spacing.sm,
   },
   label: {
     flexShrink: 1,

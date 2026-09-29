@@ -1,3 +1,4 @@
+import { t, categoryLabel, monthCount, formatCount, normalizeNumericInput, translateMessage, isArabic } from '@/i18n';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Modal,
@@ -30,7 +31,7 @@ import { ErrorBanner } from '@/components/common/ErrorBanner';
 import { Icon } from '@/components/common/Icon';
 import { Segmented, type SegmentedOption } from '@/components/common/Segmented';
 import { colors, spacing, borderRadius, typography } from '@/constants/theme';
-import { getTodayDateString, formatCurrency } from '@/utils/format';
+import { getTodayDateString, formatCurrency, formatDate } from '@/utils/format';
 import { useAuthStore } from '@/store/authStore';
 import { Building2, Laptop, Tag, Car, House, GraduationCap, ChevronDown, CalendarDays, ArrowRight, Check } from 'lucide-react-native';
 
@@ -41,11 +42,11 @@ interface ObligationFormModalProps {
   onSuccess?: () => void;
 }
 
-const statusOptions: SegmentedOption<ObligationStatus>[] = [
-  { value: 'active', label: 'Active' },
-  { value: 'completed', label: 'Completed' },
-  { value: 'late', label: 'Late' },
-  { value: 'defaulted', label: 'Defaulted' },
+const getStatusOptions = (): SegmentedOption<ObligationStatus>[] => [
+  { value: 'active', label: t("Active") },
+  { value: 'completed', label: t("Completed") },
+  { value: 'late', label: t("Late") },
+  { value: 'defaulted', label: t("Defaulted") },
 ];
 
 const defaultValues: ObligationFormData = {
@@ -148,11 +149,11 @@ export function ObligationFormModal({
         for (const issue of err.detail) {
           const fieldName = issue.loc?.[issue.loc.length - 1];
           if (typeof fieldName === 'string' && fieldName in defaultValues) {
-            form.setError(fieldName as keyof ObligationFormData, { type: 'server', message: issue.msg });
+            form.setError(fieldName as keyof ObligationFormData, { type: 'server', message: translateMessage(issue.msg) });
           }
         }
       }
-      setApiError(err?.message || 'Failed to save obligation. Please check inputs.');
+      setApiError(err?.message || t("Failed to save obligation. Please check inputs."));
     },
   });
 
@@ -179,14 +180,14 @@ export function ObligationFormModal({
         >
           <View style={styles.header}>
             <Typography style={styles.headerTitle}>
-              {isEditing ? 'Edit Commitment' : 'New Commitment'}
+              {isEditing ? t("Edit Commitment") : t("New Commitment")}
             </Typography>
             <TouchableOpacity
               onPress={onClose}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               style={styles.closeButton}
               accessibilityRole="button"
-              accessibilityLabel="Close"
+              accessibilityLabel={t("Close")}
             >
               <Icon name="x" size={20} color={colors.textSecondary} />
             </TouchableOpacity>
@@ -208,8 +209,8 @@ export function ObligationFormModal({
               name="item_name"
               render={({ field: { onChange, onBlur, value } }) => (
                 <Input
-                  label="Item / Purpose *"
-                  placeholder="e.g. MacBook Pro, Car Installment"
+                  label={t("Item / Purpose *")}
+                  placeholder={t("e.g. MacBook Pro, Car Installment")}
                   value={value}
                   onChangeText={(text) => {
                     if (apiError) setApiError(null);
@@ -226,8 +227,8 @@ export function ObligationFormModal({
               name="provider"
               render={({ field: { onChange, onBlur, value } }) => (
                 <Input
-                  label="Provider / Bank / Vendor *"
-                  placeholder="e.g. ValU, Aman, NBE, Commercial Bank"
+                  label={t("Provider / Bank / Vendor *")}
+                  placeholder={t("e.g. ValU, Aman, NBE, Commercial Bank")}
                   value={value}
                   onChangeText={(text) => {
                     if (apiError) setApiError(null);
@@ -244,8 +245,8 @@ export function ObligationFormModal({
               name="category"
               render={({ field: { onChange, onBlur, value } }) => (
                 <Input
-                  label="Category *"
-                  placeholder="e.g. Electronics, Vehicle, Housing, Education"
+                  label={t("Category *")}
+                  placeholder={t("e.g. Electronics, Vehicle, Housing, Education")}
                   value={value}
                   onChangeText={(text) => {
                     if (apiError) setApiError(null);
@@ -264,7 +265,7 @@ export function ObligationFormModal({
                   name="total_amount"
                   render={({ field: { onChange, onBlur, value } }) => (
                     <Input
-                      label="Total Amount *"
+                      label={t("Total Amount *")}
                       placeholder="0.00"
                       keyboardType="decimal-pad"
                       value={value}
@@ -284,7 +285,7 @@ export function ObligationFormModal({
                   name="monthly_installment_amount"
                   render={({ field: { onChange, onBlur, value } }) => (
                     <Input
-                      label="Monthly Amount *"
+                      label={t("Monthly Amount *")}
                       placeholder="0.00"
                       keyboardType="decimal-pad"
                       value={value}
@@ -307,7 +308,7 @@ export function ObligationFormModal({
                   name="term_months"
                   render={({ field: { onChange, onBlur, value } }) => (
                     <Input
-                      label="Term (Months) *"
+                      label={t("Term (Months) *")}
                       placeholder="12"
                       keyboardType="number-pad"
                       value={value}
@@ -327,7 +328,7 @@ export function ObligationFormModal({
                   name="due_day_of_month"
                   render={({ field: { onChange, onBlur, value } }) => (
                     <Input
-                      label="Due Day (1-31) *"
+                      label={t("Due Day (1-31) *")}
                       placeholder="1"
                       keyboardType="number-pad"
                       value={value}
@@ -348,7 +349,7 @@ export function ObligationFormModal({
               name="start_date"
               render={({ field: { onChange, onBlur, value } }) => (
                 <Input
-                  label="Start Date (YYYY-MM-DD) *"
+                  dateInput label={t("Start Date (YYYY-MM-DD) *")}
                   placeholder="2026-09-01"
                   value={value}
                   onChangeText={(text) => {
@@ -357,22 +358,21 @@ export function ObligationFormModal({
                   }}
                   onBlur={onBlur}
                   error={errors.start_date?.message}
-                  helperText="Format: YYYY-MM-DD"
+                  helperText={t("Format: YYYY-MM-DD")}
                 />
               )}
             />
 
             <View style={styles.statusSection}>
               <Typography variant="label" style={styles.statusLabel}>
-                Status
-              </Typography>
+                {t("Status")}</Typography>
               <Controller
                 control={control}
                 name="status"
                 render={({ field: { onChange, value } }) => (
                   <Segmented
                     value={value}
-                    options={statusOptions}
+                    options={getStatusOptions()}
                     onChange={onChange}
                   />
                 )}
@@ -380,7 +380,7 @@ export function ObligationFormModal({
             </View>
 
             <Button
-              title={isEditing ? 'Save Changes' : 'Create Commitment'}
+              title={isEditing ? t("Save Changes") : t("Create Commitment")}
               onPress={handleSubmit(onSubmit)}
               isLoading={mutation.isPending}
               style={styles.submitButton}
@@ -452,14 +452,7 @@ const categoryChoices = [
   { label: 'Education', icon: GraduationCap },
 ];
 
-function readableDate(value: string) {
-  const match = /^([0-9]{4})-([0-9]{2})-([0-9]{2})$/.exec(value.trim());
-  if (!match) return value;
-  const [, year, month, day] = match;
-  const date = new Date(Number(year), Number(month) - 1, Number(day));
-  if (date.getFullYear() !== Number(year) || date.getMonth() !== Number(month) - 1 || date.getDate() !== Number(day)) return value;
-  return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
-}
+function readableDate(value: string) { return formatDate(value); }
 
 function CreationFlow({ visible, onClose, form, onSubmit, isPending, apiError, clearError }: {
   visible: boolean;
@@ -540,21 +533,21 @@ function CreationFlow({ visible, onClose, form, onSubmit, isPending, apiError, c
           <TextInput
             ref={input.ref}
             value={input.value}
-            onChangeText={(value) => { clearError(); input.onChange(value); }}
+            onChangeText={(value) => { clearError(); input.onChange(options.money || options.numeric || name === 'start_date' ? normalizeNumericInput(value) : value); }}
             onFocus={() => setFocused(name)}
             onBlur={() => { setFocused(null); input.onBlur(); }}
             accessibilityLabel={label}
-            accessibilityHint={errors[name]?.message || options.hint}
+            accessibilityHint={translateMessage(errors[name]?.message) || options.hint}
             placeholder={placeholder}
             placeholderTextColor="#8B9B9E"
             keyboardType={options.money ? 'decimal-pad' : options.numeric ? 'number-pad' : 'default'}
             autoCapitalize={name === 'start_date' ? 'none' : 'sentences'}
             autoCorrect={!options.money && !options.numeric && name !== 'start_date'}
-            style={[flow.input, (options.money || options.numeric) && flow.numeric]}
+            style={[flow.input, (options.money || options.numeric) && flow.numeric, { textAlign: 'left', direction: options.money || options.numeric || name === 'start_date' ? 'ltr' : isArabic() ? 'rtl' : 'ltr', writingDirection: options.money || options.numeric || name === 'start_date' ? 'ltr' : 'auto' }, isArabic() && !options.money && !options.numeric && name !== 'start_date' && { fontFamily: 'NotoNaskhArabic', lineHeight: 27 }]}
           />
           {options.money && <View style={flow.currencyPill}><Typography style={flow.currency}>{currency}</Typography></View>}
         </View>
-        {errors[name]?.message && <Typography accessibilityLiveRegion="polite" style={flow.error}>{errors[name]?.message}</Typography>}
+        {errors[name]?.message && <Typography accessibilityLiveRegion="polite" style={flow.error}>{translateMessage(errors[name]?.message)}</Typography>}
         {options.hint && !errors[name] && <Typography style={flow.hint}>{options.hint}</Typography>}
       </View>
     )} />
@@ -567,21 +560,21 @@ function CreationFlow({ visible, onClose, form, onSubmit, isPending, apiError, c
         <KeyboardAvoidingView style={flow.sheet} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={flow.handle} />
           <View style={flow.header}>
-            <TouchableOpacity onPress={onClose} accessibilityRole="button" accessibilityLabel="Close New Commitment" style={flow.close}>
+            <TouchableOpacity onPress={onClose} accessibilityRole="button" accessibilityLabel={t("Close New Commitment")} style={flow.close}>
               <Icon name="x" size={20} color="#294344" />
             </TouchableOpacity>
             <View style={flow.heading}>
-              <Typography style={flow.title}>New Commitment</Typography>
-              <Typography style={flow.subtitle}>Add a new financial commitment</Typography>
+              <Typography style={flow.title}>{t("New Commitment")}</Typography>
+              <Typography style={flow.subtitle}>{t("Add a new financial commitment")}</Typography>
             </View>
             <View style={flow.headerBalance} />
           </View>
-          <View style={flow.stepper} accessibilityLabel={'Step ' + (step + 1) + ' of 3: ' + ['Details', 'Payment', 'Review'][step]}>
-            {['Details', 'Payment', 'Review'].map((label, index) => (
+          <View style={flow.stepper} accessibilityLabel={t('Step {step} of 3: {label}', { step: formatCount(step + 1), label: [t('Details'), t('Payment'), t('Review')][step] })}>
+            {[t("Details"), t("Payment"), t("Review")].map((label, index) => (
               <View key={label} style={flow.stepItem}>
                 {index > 0 && <View style={[flow.connector, index <= step && flow.connectorDone]} />}
                 <View style={[flow.stepCircle, index <= step && flow.stepActive]}>
-                  {index < step ? <Check size={12} color="#F7F6EF" /> : <Typography style={[flow.stepNumber, index === step && flow.stepNumberActive]}>{index + 1}</Typography>}
+                  {index < step ? <Check size={12} color="#F7F6EF" /> : <Typography style={[flow.stepNumber, index === step && flow.stepNumberActive]}>{formatCount(index + 1)}</Typography>}
                 </View>
                 <Typography style={[flow.stepLabel, index === step && flow.stepLabelActive]}>{label}</Typography>
               </View>
@@ -590,99 +583,99 @@ function CreationFlow({ visible, onClose, form, onSubmit, isPending, apiError, c
           <ScrollView ref={scroll} style={flow.scroll} contentContainerStyle={flow.content} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" showsVerticalScrollIndicator={false}>
             <ErrorBanner message={apiError} onDismiss={clearError} />
             {step === 0 && <>
-              {field('item_name', 'Item / Purpose', 'e.g. MacBook Pro, Car installment', { icon: <Laptop size={19} color="#718B8D" /> })}
-              {field('provider', 'Provider / Bank / Vendor', 'e.g. ValU, Aman, NBE', { icon: <Building2 size={19} color="#718B8D" /> })}
+              {field('item_name', t("Item / Purpose"), t("e.g. MacBook Pro, Car installment"), { icon: <Laptop size={19} color="#718B8D" /> })}
+              {field('provider', t("Provider / Bank / Vendor"), t("e.g. ValU, Aman, NBE"), { icon: <Building2 size={19} color="#718B8D" /> })}
               <View style={flow.field}>
-                <Typography style={flow.label}>Category <Typography style={flow.required}>*</Typography></Typography>
-                <TouchableOpacity style={[flow.inputShell, categoryOpen && flow.focused, !!errors.category && flow.invalid]} onPress={() => { Keyboard.dismiss(); setCategoryOpen(!categoryOpen); }} accessibilityRole="button" accessibilityLabel={'Category: ' + (values.category || 'Select category')} accessibilityState={{ expanded: categoryOpen }}>
+                <Typography style={flow.label}>{t("Category")} <Typography style={flow.required}>*</Typography></Typography>
+                <TouchableOpacity style={[flow.inputShell, categoryOpen && flow.focused, !!errors.category && flow.invalid]} onPress={() => { Keyboard.dismiss(); setCategoryOpen(!categoryOpen); }} accessibilityRole="button" accessibilityLabel={t("Category: ") + (categoryLabel(values.category) || t("Select category"))} accessibilityState={{ expanded: categoryOpen }}>
                   <CategoryIcon size={19} color="#718B8D" />
-                  <Typography style={[flow.selectText, !values.category && flow.placeholder]}>{values.category || 'Select category'}</Typography>
+                  <Typography style={[flow.selectText, !values.category && flow.placeholder]}>{categoryLabel(values.category) || t("Select category")}</Typography>
                   <ChevronDown size={17} color="#718B8D" />
                 </TouchableOpacity>
                 {categoryOpen && <View style={flow.options}>
                   {categoryChoices.map(({ label, icon: ChoiceIcon }) => (
                     <TouchableOpacity key={label} style={flow.option} accessibilityRole="button" accessibilityState={{ selected: values.category === label }} onPress={() => { update('category', label); setCustomCategory(false); setCategoryOpen(false); }}>
-                      <ChoiceIcon size={18} color="#52756D" /><Typography style={flow.optionText}>{label}</Typography>
+                      <ChoiceIcon size={18} color="#52756D" /><Typography style={flow.optionText}>{categoryLabel(label)}</Typography>
                       {values.category === label && <Check size={17} color="#285F53" />}
                     </TouchableOpacity>
                   ))}
                   <TouchableOpacity style={flow.option} accessibilityRole="button" onPress={() => { setCustomCategory(true); setCategoryOpen(false); }}>
-                    <Tag size={18} color="#52756D" /><Typography style={flow.optionText}>Custom category</Typography>
+                    <Tag size={18} color="#52756D" /><Typography style={flow.optionText}>{t("Custom category")}</Typography>
                   </TouchableOpacity>
                 </View>}
-                {!customCategory && errors.category && <Typography style={flow.error}>{errors.category.message}</Typography>}
+                {!customCategory && errors.category && <Typography style={flow.error}>{translateMessage(errors.category.message)}</Typography>}
               </View>
-              {customCategory && field('category', 'Custom category', 'Enter a category', { icon: <Tag size={19} color="#718B8D" /> })}
+              {customCategory && field('category', t("Custom category"), t("Enter a category"), { icon: <Tag size={19} color="#718B8D" /> })}
             </>}
             {step === 1 && <>
               <View style={[flow.row, stacked && flow.stacked]}>
-                <View style={flow.column}>{field('total_amount', 'Total Amount', '0.00', { money: true })}</View>
-                <View style={flow.column}>{field('monthly_installment_amount', 'Monthly Amount', '0.00', { money: true })}</View>
+                <View style={flow.column}>{field('total_amount', t("Total Amount"), '0.00', { money: true })}</View>
+                <View style={flow.column}>{field('monthly_installment_amount', t("Monthly Amount"), '0.00', { money: true })}</View>
               </View>
               <View style={[flow.row, stacked && flow.stacked]}>
-                <View style={flow.column}>{field('term_months', 'Term (Months)', '12', { numeric: true, icon: <CalendarDays size={18} color="#718B8D" /> })}</View>
-                <View style={flow.column}>{field('due_day_of_month', 'Due Day (1ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“31)', '1', { numeric: true, icon: <CalendarDays size={18} color="#718B8D" /> })}</View>
+                <View style={flow.column}>{field('term_months', t("Term (Months)"), '12', { numeric: true, icon: <CalendarDays size={18} color="#718B8D" /> })}</View>
+                <View style={flow.column}>{field('due_day_of_month', t("Due Day (1–31)"), '1', { numeric: true, icon: <CalendarDays size={18} color="#718B8D" /> })}</View>
               </View>
               <View style={flow.quickTerms}>
-                <Typography style={flow.hint}>Quick term</Typography>
-                {[3, 6, 12, 24].map((term) => <TouchableOpacity key={term} style={[flow.term, values.term_months === String(term) && flow.chipSelected]} accessibilityRole="button" accessibilityLabel={term + ' months'} accessibilityState={{ selected: values.term_months === String(term) }} onPress={() => update('term_months', String(term))}>
-                  <Typography style={flow.chipText}>{term}</Typography>
+                <Typography style={flow.hint}>{t("Quick term")}</Typography>
+                {[3, 6, 12, 24].map((term) => <TouchableOpacity key={term} style={[flow.term, values.term_months === String(term) && flow.chipSelected]} accessibilityRole="button" accessibilityLabel={monthCount(term)} accessibilityState={{ selected: values.term_months === String(term) }} onPress={() => update('term_months', String(term))}>
+                  <Typography style={flow.chipText}>{formatCount(term)}</Typography>
                 </TouchableOpacity>)}
               </View>
               {dateEditing ? <>
-                {field('start_date', 'Start Date', 'YYYY-MM-DD', { icon: <CalendarDays size={19} color="#718B8D" />, hint: 'Enter year-month-day, e.g. 2026-09-06' })}
+                {field('start_date', t("Start Date"), 'YYYY-MM-DD', { icon: <CalendarDays size={19} color="#718B8D" />, hint: t("Enter year-month-day, e.g. 2026-09-06") })}
                 <TouchableOpacity style={flow.dateDone} accessibilityRole="button" onPress={async () => { if (await form.trigger('start_date')) { setDateEditing(false); Keyboard.dismiss(); } }}>
-                  <Typography style={flow.link}>Done editing date</Typography>
+                  <Typography style={flow.link}>{t("Done editing date")}</Typography>
                 </TouchableOpacity>
               </> : <View style={flow.field}>
-                <Typography style={flow.label}>Start Date <Typography style={flow.required}>*</Typography></Typography>
-                <TouchableOpacity style={[flow.inputShell, !!errors.start_date && flow.invalid]} accessibilityRole="button" accessibilityLabel={'Start date: ' + readableDate(values.start_date) + '. Edit date'} onPress={() => setDateEditing(true)}>
+                <Typography style={flow.label}>{t("Start Date")} <Typography style={flow.required}>*</Typography></Typography>
+                <TouchableOpacity style={[flow.inputShell, !!errors.start_date && flow.invalid]} accessibilityRole="button" accessibilityLabel={t('Start date: {date}. Edit date', { date: readableDate(values.start_date) })} onPress={() => setDateEditing(true)}>
                   <CalendarDays size={19} color="#718B8D" />
                   <Typography style={flow.selectText}>{readableDate(values.start_date)}</Typography>
-                  <Typography style={flow.link}>Edit</Typography>
+                  <Typography style={flow.link}>{t("Edit")}</Typography>
                 </TouchableOpacity>
-                {errors.start_date && <Typography style={flow.error}>{errors.start_date.message}</Typography>}
+                {errors.start_date && <Typography style={flow.error}>{translateMessage(errors.start_date.message)}</Typography>}
               </View>}
-              <Typography style={flow.label}>Status</Typography>
+              <Typography style={flow.label}>{t("Status")}</Typography>
               <View style={flow.statuses}>
-                {statusOptions.map((option) => <TouchableOpacity key={option.value} style={[flow.statusChip, values.status === option.value && flow.chipSelected]} accessibilityRole="radio" accessibilityState={{ checked: values.status === option.value }} onPress={() => update('status', option.value)}>
+                {getStatusOptions().map((option) => <TouchableOpacity key={option.value} style={[flow.statusChip, values.status === option.value && flow.chipSelected]} accessibilityRole="radio" accessibilityState={{ checked: values.status === option.value }} onPress={() => update('status', option.value)}>
                   <View style={[flow.statusDot, values.status === option.value && flow.statusDotSelected]} />
                   <Typography style={flow.chipText}>{option.label}</Typography>
                 </TouchableOpacity>)}
               </View>
-              {errors.status && <Typography style={flow.error}>{errors.status.message}</Typography>}
+              {errors.status && <Typography style={flow.error}>{translateMessage(errors.status.message)}</Typography>}
             </>}
             {step === 2 && <>
               <View style={flow.reviewTop}>
                 <View style={flow.reviewIcon}><CategoryIcon size={24} color="#376E5F" /></View>
                 <Typography style={flow.reviewTitle}>{values.item_name}</Typography>
-                <Typography style={flow.reviewCategory}>{values.category}</Typography>
+                <Typography style={flow.reviewCategory}>{categoryLabel(values.category)}</Typography>
               </View>
               <View style={flow.reviewAmounts}>
-                <Typography style={flow.reviewKicker}>Monthly commitment</Typography>
+                <Typography style={flow.reviewKicker}>{t("Monthly commitment")}</Typography>
                 <Typography style={flow.reviewAmount}>{formatCurrency(values.monthly_installment_amount, currency)}</Typography>
-                <Typography style={flow.reviewTotal}>Total Ãƒâ€šÃ‚Â· {formatCurrency(values.total_amount, currency)}</Typography>
+                <Typography style={flow.reviewTotal}>{t("Total ·")} {formatCurrency(values.total_amount, currency)}</Typography>
               </View>
               {[
-                ['Term', values.term_months + ' months'],
-                ['Due', 'Day ' + values.due_day_of_month + ' of each month'],
-                ['Start', readableDate(values.start_date)],
-                ['Provider', values.provider],
-                ['Status', statusOptions.find((option) => option.value === values.status)?.label || values.status],
+                [t("Term"), monthCount(values.term_months)],
+                [t("Due"), t('Day {day} of each month', { day: formatCount(values.due_day_of_month) })],
+                [t("Start"), readableDate(values.start_date)],
+                [t("Provider"), values.provider],
+                [t("Status"), getStatusOptions().find((option) => option.value === values.status)?.label || values.status],
               ].map(([label, value]) => <View key={label} style={flow.reviewRow}>
                 <Typography style={flow.reviewLabel}>{label}</Typography>
                 <Typography style={flow.reviewValue}>{value}</Typography>
               </View>)}
-              <Typography style={flow.reviewNote}>Check your details before creating this commitment.</Typography>
+              <Typography style={flow.reviewNote}>{t("Check your details before creating this commitment.")}</Typography>
             </>}
           </ScrollView>
           <View style={flow.footer}>
-            {step > 0 && <TouchableOpacity disabled={isPending} onPress={() => moveTo(step - 1)} style={flow.back} accessibilityRole="button" accessibilityLabel="Back to previous step"><Typography style={flow.link}>Back</Typography></TouchableOpacity>}
+            {step > 0 && <TouchableOpacity disabled={isPending} onPress={() => moveTo(step - 1)} style={flow.back} accessibilityRole="button" accessibilityLabel={t("Back to previous step")}><Typography style={flow.link}>{t("Back")}</Typography></TouchableOpacity>}
             <View style={flow.ctaWrap}>
-              <Button title={step === 0 ? 'Continue' : step === 1 ? 'Review' : 'Create Commitment'} onPress={advance}
+              <Button title={step === 0 ? t("Continue") : step === 1 ? t("Review") : t("Create Commitment")} onPress={advance}
                 disabled={!stepValid || isPending} isLoading={isPending} style={flow.cta}
                 textStyle={flow.ctaText} accessibilityRole="button" accessibilityState={{ disabled: !stepValid || isPending, busy: isPending }} />
-              {step < 2 && <View pointerEvents="none" style={flow.ctaArrow}><ArrowRight size={18} color="#EEF4EE" /></View>}
+              {step < 2 && <View pointerEvents="none" style={flow.ctaArrow}><ArrowRight style={isArabic() ? { transform: [{ scaleX: -1 }] } : undefined} size={18} color="#EEF4EE" /></View>}
             </View>
           </View>
         </KeyboardAvoidingView>
@@ -703,7 +696,7 @@ const flow = StyleSheet.create({
   subtitle: { fontSize: 12, lineHeight: 18, color: '#7A898B', textAlign: 'center', marginTop: 3 },
   stepper: { flexDirection: 'row', paddingHorizontal: 25, marginTop: 23, marginBottom: 20 },
   stepItem: { flex: 1, alignItems: 'center' },
-  connector: { position: 'absolute', height: 1, backgroundColor: '#DFE1DA', width: '78%', right: '61%', top: 11 },
+  connector: { position: 'absolute', height: 1, backgroundColor: '#DFE1DA', width: '78%', end: '61%', top: 11 },
   connectorDone: { backgroundColor: '#719F8B' },
   stepCircle: { width: 23, height: 23, borderRadius: 12, backgroundColor: '#DDDED8', alignItems: 'center', justifyContent: 'center' },
   stepActive: { backgroundColor: '#073E3D' },
@@ -748,7 +741,7 @@ const flow = StyleSheet.create({
   ctaWrap: { flex: 1 },
   cta: { minHeight: 52, borderRadius: 12, backgroundColor: '#02262D' },
   ctaText: { fontSize: 14, fontWeight: '500', paddingHorizontal: 12 },
-  ctaArrow: { position: 'absolute', right: 18, top: 17 },
+  ctaArrow: { position: 'absolute', end: 18, top: 17 },
   reviewTop: { alignItems: 'center', paddingTop: 5, paddingBottom: 22 },
   reviewIcon: { width: 50, height: 50, borderRadius: 17, backgroundColor: '#E1EEE4', alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
   reviewTitle: { fontFamily: typography.fontFamily, ...typography.title, fontSize: 27, lineHeight: 34, color: '#143E3B', textAlign: 'center' },

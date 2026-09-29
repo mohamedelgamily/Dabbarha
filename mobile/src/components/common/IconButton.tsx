@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { colors } from '@/constants/theme';
 import { Icon, IconName } from './Icon';
+import { t } from '@/i18n';
 
 interface IconButtonProps extends Omit<TouchableOpacityProps, 'children' | 'style'> {
   name: IconName;
@@ -56,7 +57,7 @@ export function IconButton({
       activeOpacity={0.7}
       disabled={isDisabled}
       accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel ?? name}
+      accessibilityLabel={accessibilityLabel ?? (name === 'x' ? t('Close') : name === 'arrow-left' ? t('Back') : t('Open options'))}
       style={[
         styles.base,
         { width: size, height: size, borderRadius: size / 2 },

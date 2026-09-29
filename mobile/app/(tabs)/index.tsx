@@ -1,3 +1,4 @@
+import { t, formatCount } from '@/i18n';
 import React, { useEffect, useRef } from 'react';
 import {
   View,
@@ -43,9 +44,9 @@ function getFirstName(fullName?: string | null): string | null {
 
 function getGreeting(): string {
   const h = new Date().getHours();
-  if (h < 12) return 'Good morning';
-  if (h < 18) return 'Good afternoon';
-  return 'Good evening';
+  if (h < 12) return t("Good morning");
+  if (h < 18) return t("Good afternoon");
+  return t("Good evening");
 }
 
 function toNum(v: string | number | null | undefined): number {
@@ -138,7 +139,7 @@ export default function DashboardScreen() {
     return (
       <ScreenWrapper backgroundColor={canvas}>
         <View style={styles.stateHeader}><Logo variant="symbol" tone="dark" width={28} /></View>
-        <LoadingIndicator message="Loading your finances..." />
+        <LoadingIndicator message={t("Loading your finances...")} />
       </ScreenWrapper>
     );
   }
@@ -147,8 +148,8 @@ export default function DashboardScreen() {
     return (
       <ScreenWrapper scrollable backgroundColor={canvas}>
         <View style={styles.stateHeader}><Logo variant="symbol" tone="dark" width={28} /></View>
-        <ErrorBanner message={error?.message || 'Unable to sync dashboard. Please check your connection.'} />
-        <Button title="Try Again" onPress={() => refetch()} style={styles.retryBtn} />
+        <ErrorBanner message={error?.message || t("Unable to sync dashboard. Please check your connection.")} />
+        <Button title={t("Try Again")} onPress={() => refetch()} style={styles.retryBtn} />
       </ScreenWrapper>
     );
   }
@@ -162,15 +163,15 @@ export default function DashboardScreen() {
   const hasIncome = income > 0;
   const hasProfile = hasIncome || fixed > 0;
   const capabilities: QuickActionItem[] = [
-    { title: 'Cashflow\nForecast', icon: 'trending-up', route: '/forecast' },
-    { title: 'Affordability\nTest', icon: 'pie-chart', route: '/affordability' },
-    { title: 'Obligations\nLedger', icon: 'credit-card', route: '/(tabs)/obligations' },
-    { title: 'Ask\nDabbarha', icon: 'message-circle', route: '/chat' },
+    { title: t("Cashflow\nForecast"), icon: 'trending-up', route: '/forecast' },
+    { title: t("Affordability\nTest"), icon: 'pie-chart', route: '/affordability' },
+    { title: t("Obligations\nLedger"), icon: 'credit-card', route: '/(tabs)/obligations' },
+    { title: t("Ask\nDabbarha"), icon: 'message-circle', route: '/chat' },
   ];
   const metrics: { label: string; icon: IconName; value: string }[] = [
-    { label: 'Income', icon: 'arrow-up', value: hasProfile ? formatCurrency(income, currency) : 'Not set' },
-    { label: 'Fixed Expenses', icon: 'file-text', value: hasProfile ? formatCurrency(fixed, currency) : 'Not set' },
-    { label: 'Obligations', icon: 'credit-card', value: formatCurrency(obligations, currency) },
+    { label: t("Income"), icon: 'arrow-up', value: hasProfile ? formatCurrency(income, currency) : t("Not set") },
+    { label: t("Fixed Expenses"), icon: 'file-text', value: hasProfile ? formatCurrency(fixed, currency) : t("Not set") },
+    { label: t("Obligations"), icon: 'credit-card', value: formatCurrency(obligations, currency) },
   ];
 
   return (
@@ -187,17 +188,16 @@ export default function DashboardScreen() {
             <FlowBackdrop />
             <View style={styles.brandRow}>
               <View style={styles.brandLockup}>
-                <Logo variant="symbol" tone="light" width={29} />
-                <Typography style={styles.brandWordmark}>Dabbarha</Typography>
+                <Logo variant="symbol" tone="light" width={44} />
               </View>
-              <TouchableOpacity onPress={() => router.push('/(tabs)/profile')} style={styles.avatarButton} accessibilityRole="button" accessibilityLabel="Open profile" activeOpacity={0.7}>
+              <TouchableOpacity onPress={() => router.push('/(tabs)/profile')} style={styles.avatarButton} accessibilityRole="button" accessibilityLabel={t("Open profile")} activeOpacity={0.7}>
                 <Typography style={styles.avatarText}>{userInitial || 'D'}</Typography>
               </TouchableOpacity>
             </View>
             <View style={styles.greetingBlock}>
               <Typography style={styles.greetingLine}>{getGreeting()},</Typography>
               <Typography style={styles.greetingName} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.65}>
-                {firstName || 'Welcome'}.
+                {firstName || t("Welcome")}.
               </Typography>
             </View>
           </View>
@@ -208,21 +208,21 @@ export default function DashboardScreen() {
                 activeOpacity={0.85}
                 onPress={() => router.push(hasProfile ? '/forecast' : '/(tabs)/profile')}
                 accessibilityRole="button"
-                accessibilityLabel={hasProfile ? `Monthly cash surplus ${formatCurrency(buffer, currency)}. Open forecast` : 'Financial profile not set. Open profile to add income'}
+                accessibilityLabel={hasProfile ? t('Monthly cash surplus {amount}. Open forecast', { amount: formatCurrency(buffer, currency) }) : t("Financial profile not set. Open profile to add income")}
                 style={styles.financialMain}
               >
                 <View style={styles.financialCopy}>
-                  <Typography style={styles.financialLabel}>Monthly Cash Surplus</Typography>
+                  <Typography style={styles.financialLabel}>{t("Monthly Cash Surplus")}</Typography>
                   {hasProfile ? (
                     <Typography style={[styles.amount, isNegative && styles.negativeAmount]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.4}>
                       {formatCurrency(buffer, currency, { showSymbol: false })}
                       <Typography style={[styles.currency, isNegative && styles.negativeAmount]}> {currency}</Typography>
                     </Typography>
                   ) : (
-                    <Typography style={styles.emptyTitle}>Financial profile not set</Typography>
+                    <Typography style={styles.emptyTitle}>{t("Financial profile not set")}</Typography>
                   )}
                   <Typography style={styles.amountCaption}>
-                    {!hasProfile ? 'Add income to unlock insights' : isNegative ? 'Commitments exceed income this month' : 'Available after your monthly commitments'}
+                    {!hasProfile ? t("Add income to unlock insights") : isNegative ? t("Commitments exceed income this month") : t("Available after your monthly commitments")}
                   </Typography>
                 </View>
                 <View style={styles.heroArrow}><Icon name="chevron-right" size={21} color="#E2EDE5" strokeWidth={1.5} /></View>
@@ -261,13 +261,13 @@ export default function DashboardScreen() {
                 <Icon name={!hasProfile ? 'wallet' : isNegative ? 'alert-triangle' : 'trending-up'} size={22} color={hasProfile && isNegative ? '#99583E' : '#217E6E'} strokeWidth={1.6} />
               </View>
               <View style={styles.insightCopy}>
-                <Typography style={styles.insightTitle}>{!hasProfile ? 'Complete your setup' : isNegative ? 'Review your monthly shortfall' : 'Your month at a glance'}</Typography>
+                <Typography style={styles.insightTitle}>{!hasProfile ? t("Complete your setup") : isNegative ? t("Review your monthly shortfall") : t("Your month at a glance")}</Typography>
                 <Typography style={styles.insightBody}>
                   {!hasProfile
-                    ? 'Set your income and fixed expenses to see your full financial picture.'
+                    ? t("Set your income and fixed expenses to see your full financial picture.")
                     : isNegative
-                      ? `Commitments exceed income by ${formatCurrency(Math.abs(buffer), currency)} this month.`
-                      : `${activeCount} active ${activeCount === 1 ? 'obligation' : 'obligations'}. Explore your projected cashflow.`}
+                      ? t('Commitments exceed income by {amount} this month.', { amount: formatCurrency(Math.abs(buffer), currency) })
+                      : t(activeCount === 1 ? '{count} active obligation. Explore your projected cashflow.' : '{count} active obligations. Explore your projected cashflow.', { count: formatCount(activeCount) })}
                 </Typography>
               </View>
               <Icon name="chevron-right" size={18} color="#54716F" strokeWidth={1.5} />
@@ -305,7 +305,7 @@ const styles = StyleSheet.create({
   heroArrow: { width: 42, height: 42, borderRadius: 21, backgroundColor: '#2C6059', alignItems: 'center', justifyContent: 'center' },
   summaryStrip: { flexDirection: 'row', backgroundColor: '#EFF0E9', borderRadius: 23, borderWidth: 4, borderColor: '#FCFCF7', paddingVertical: 15, paddingHorizontal: 4 },
   metric: { flex: 1, minWidth: 0, paddingHorizontal: 7, justifyContent: 'center' },
-  metricDivider: { borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: '#CFD9D1' },
+  metricDivider: { borderStartWidth: StyleSheet.hairlineWidth, borderStartColor: '#CFD9D1' },
   metricHeading: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 3 },
   metricLabel: { fontSize: 10, lineHeight: 14, color: '#516864', flexShrink: 1 },
   metricValue: { fontSize: 12, lineHeight: 18, fontWeight: '600', color: '#173B3C', fontVariant: ['tabular-nums'] },

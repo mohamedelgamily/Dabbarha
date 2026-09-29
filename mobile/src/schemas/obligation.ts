@@ -55,7 +55,7 @@ export const obligationSchema = z.object({
         message: 'Due day must be a day between 1 and 31',
       }
     ),
-  status: z.enum(['active', 'completed', 'late', 'defaulted']),
+  status: z.enum(['active', 'completed', 'late', 'defaulted'], { error: 'Select a valid status' }),
 });
 
 export type ObligationFormData = z.infer<typeof obligationSchema>;

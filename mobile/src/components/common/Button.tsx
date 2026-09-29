@@ -47,6 +47,9 @@ export function Button({
         style,
       ]}
       {...props}
+      accessibilityRole={props.accessibilityRole || 'button'}
+      accessibilityLabel={props.accessibilityLabel || title}
+      accessibilityState={{ ...props.accessibilityState, disabled: isButtonDisabled, busy: isLoading }}
     >
       {isLoading ? (
         <ActivityIndicator
@@ -56,7 +59,7 @@ export function Button({
       ) : (
         <Typography
           variant="bodyBold"
-          style={[textVariantStyles[variant], sizeTextStyles[size], textStyle]}
+          align="center" style={[{ flexShrink: 1 }, textVariantStyles[variant], sizeTextStyles[size], textStyle]}
         >
           {title}
         </Typography>

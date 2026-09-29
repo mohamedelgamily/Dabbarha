@@ -1,14 +1,18 @@
-import React, { useState, useRef, useCallback } from 'react';
+import { t, isArabic } from '@/i18n';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   View,
   StyleSheet,
   ScrollView,
   TextInput,
   ActivityIndicator,
+  Alert,
 
   TouchableOpacity,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { usePreventRemove } from 'expo-router/react-navigation';
+import { useLanguageStore } from '@/store/languageStore';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { chatApi } from '@/api/chat';
 import {
@@ -29,11 +33,11 @@ function generateMessageId(): string {
   return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 }
 
-const SUGGESTED_PROMPTS = [
-  'What are my active obligations?',
-  'Help me assess a purchase over 6 months.',
-  'What is my projected cash buffer next month?',
-  'How much will I pay across commitments this month?',
+const getSuggestedPrompts = () => [
+  t("What are my active obligations?"),
+  t("Help me assess a purchase over 6 months."),
+  t("What is my projected cash buffer next month?"),
+  t("How much will I pay across commitments this month?"),
 ];
 
 interface MessageBubbleProps {
@@ -63,7 +67,7 @@ function MessageBubble({ message }: MessageBubbleProps) {
         ]}
       >
         <Typography
-          selectable style={isUser ? styles.userBubbleText : styles.assistantBubbleText}
+          direction="auto" selectable style={isUser ? styles.userBubbleText : styles.assistantBubbleText}
         >
           {message.content}
         </Typography>
@@ -88,21 +92,19 @@ function ConfirmationCard({
       <View style={styles.confirmationHeader}>
         <Icon name="alert-triangle" size={18} color="#D97706" />
         <Typography style={styles.confirmationTitle}>
-          Action requested
-        </Typography>
+          {t("Action requested")}</Typography>
       </View>
       <Typography style={styles.confirmationDescription}>
-        Review the proposed change in the response above. Confirm only when you are ready to update your financial records.
-      </Typography>
+        {t("Review the proposed change in the response above. Confirm only when you are ready to update your financial records.")}</Typography>
       <View style={styles.confirmationButtons}>
         <Button
-          title="Confirm"
+          title={t("Confirm")}
           onPress={onConfirm}
           isLoading={isPending}
           style={styles.confirmButton}
         />
         <Button
-          title="Cancel"
+          title={t("Cancel")}
           variant="secondary"
           onPress={onCancel}
           disabled={isPending}
@@ -179,8 +181,17 @@ export default function ChatScreen() {
       ]);
     },
     onError: (err) => {
-      setApiError(err?.message || 'Failed to send message. Please try again.');
+      setApiError(err?.message || t("Failed to send message. Please try again."));
     },
+  });
+
+  const chatProtected = mutation.isPending || !!pendingConfirmation;
+  useEffect(() => {
+    useLanguageStore.getState().setChatProtected(chatProtected);
+    return () => useLanguageStore.getState().setChatProtected(false);
+  }, [chatProtected]);
+  usePreventRemove(chatProtected, () => {
+    Alert.alert(t('Action requested'), t('Finish or cancel the pending chat action before leaving or changing language.'));
   });
 
   const handleSendPrompt = (text: string) => {
@@ -238,7 +249,7 @@ export default function ChatScreen() {
 
   const handleCancel = () => {
     if (!pendingConfirmation) return;
-    setCancelledMessage('Action cancelled.');
+    setCancelledMessage(t("Action cancelled."));
     setPendingConfirmation(null);
     scrollToBottom();
   };
@@ -252,7 +263,7 @@ export default function ChatScreen() {
             onPress={() => router.back()}
             style={styles.backTouch}
             accessibilityRole="button"
-            accessibilityLabel="Back"
+            accessibilityLabel={t("Back")}
           >
             <Icon name="arrow-left" size={20} color="#E4EDE2" />
           </TouchableOpacity>
@@ -265,7 +276,7 @@ export default function ChatScreen() {
               <Typography style={styles.headerTitle}>Dabbarha</Typography>
               <View style={styles.statusLiveRow}>
 
-                <Typography style={styles.statusLiveText}>Financial Copilot</Typography>
+                <Typography style={styles.statusLiveText}>{t("Financial Copilot")}</Typography>
               </View>
             </View>
           </View>
@@ -293,18 +304,16 @@ export default function ChatScreen() {
                 <Logo variant="symbol" tone="dark" width={32} height={32} />
               </View>
               <Typography style={styles.emptyHeading}>
-                Ask Dabbarha
-              </Typography>
+                {t("Ask Dabbarha")}</Typography>
               <Typography style={styles.emptySubtitle}>
-                Plan your money with context. Ask about commitments, cashflow, affordability, or your next financial decision.
-              </Typography>
+                {t("Plan your money with context. Ask about commitments, cashflow, affordability, or your next financial decision.")}</Typography>
 
+              <Typography variant="caption">{t('Replies are provided by the assistant and may use a different language.')}</Typography>
               {/* Suggested Prompt Chips */}
               <View style={styles.promptsContainer}>
                 <Typography style={styles.promptsLabel}>
-                  Start with a question
-                </Typography>
-                {SUGGESTED_PROMPTS.map((prompt, idx) => (
+                  {t("Start with a question")}</Typography>
+                {getSuggestedPrompts().map((prompt, idx) => (
                   <TouchableOpacity
                     key={idx}
                     activeOpacity={0.75}
@@ -329,14 +338,14 @@ export default function ChatScreen() {
             (mutation.data.metadata.status === 'executed' || mutation.data.metadata.status === 'error') && (
             <View style={[styles.resultNotice, mutation.data.metadata.status === 'error' && styles.resultError]} accessibilityLiveRegion="polite">
               <Icon name={mutation.data.metadata.status === 'executed' ? 'check-circle' : 'alert-triangle'} size={17} color="#6C7756" />
-              <Typography style={styles.resultText}>{mutation.data.metadata.status === 'executed' ? 'Financial action completed.' : 'The financial action could not be completed. See Dabbarhaâ€™s response for details.'}</Typography>
+              <Typography style={styles.resultText}>{mutation.data.metadata.status === 'executed' ? t("Financial action completed.") : t("The financial action could not be completed. See Dabbarha’s response for details.")}</Typography>
             </View>
           )}
           {!mutation.isPending && mutation.data?.metadata?.error && (
             <View style={styles.resultNotice}>
               <Typography style={styles.resultText}>{mutation.data.metadata.error === 'conversation_not_found'
-                ? 'This conversation is no longer available. Your next message will start a new conversation.'
-                : 'Dabbarha could not finish this request. Please try again.'}</Typography>
+                ? t("This conversation is no longer available. Your next message will start a new conversation.")
+                : t("Dabbarha could not finish this request. Please try again.")}</Typography>
             </View>
           )}
           {cancelledMessage && (
@@ -362,8 +371,7 @@ export default function ChatScreen() {
               </View>
               <View style={styles.typingBubble} accessibilityLiveRegion="polite"><ActivityIndicator size="small" color="#658776" />
                 <Typography style={styles.typingText}>
-                  Thinking through your requestâ€¦
-                </Typography>
+                  {t("Thinking through your request…")}</Typography>
               </View>
             </View>
           )}
@@ -372,10 +380,10 @@ export default function ChatScreen() {
         {/* Input Bar */}
         <View style={styles.inputContainer}>
           <TextInput
-            style={styles.textInput}
+            style={[styles.textInput, { textAlign: 'left', direction: isArabic() ? 'rtl' : 'ltr', writingDirection: 'auto' }, isArabic() && { fontFamily: 'NotoNaskhArabic', lineHeight: 27 }]}
             value={inputText}
             onChangeText={setInputText}
-            placeholder="Ask Dabbarha anything..." accessibilityLabel="Message Dabbarha"
+            placeholder={t("Ask Dabbarha anything...")} accessibilityLabel={t("Message Dabbarha")}
             placeholderTextColor={colors.textMuted}
             multiline
             maxLength={1000}
@@ -389,7 +397,7 @@ export default function ChatScreen() {
               (!inputText.trim() || mutation.isPending) &&
                 styles.sendButtonDisabled,
             ]}
-            activeOpacity={0.75} accessibilityRole="button" accessibilityLabel="Send message"
+            activeOpacity={0.75} accessibilityRole="button" accessibilityLabel={t("Send message")}
           >
             <Icon
               name="send"
@@ -433,8 +441,8 @@ const styles = StyleSheet.create({
   assistantMessageRow: { justifyContent: 'flex-start' },
   assistantAvatar: { width: 29, height: 32, borderRadius: 11, backgroundColor: '#E4EDE0', alignItems: 'center', justifyContent: 'center', marginTop: 4 },
   messageBubble: { flexShrink: 1, minWidth: 0 },
-  userBubble: { maxWidth: '87%', backgroundColor: '#073A39', paddingVertical: 12, paddingHorizontal: 16, borderRadius: 21, borderBottomRightRadius: 6 },
-  assistantBubble: { flex: 1, paddingVertical: 5, paddingRight: 3 },
+  userBubble: { maxWidth: '87%', backgroundColor: '#073A39', paddingVertical: 12, paddingHorizontal: 16, borderRadius: 21, borderEndEndRadius: 6 },
+  assistantBubble: { flex: 1, paddingVertical: 5, paddingEnd: 3 },
   userBubbleText: { fontSize: 15, lineHeight: 24, color: '#F2F5EA', fontVariant: ['tabular-nums'] },
   assistantBubbleText: { fontSize: 15, lineHeight: 25, color: '#29483D', fontVariant: ['tabular-nums'] },
   confirmationCard: { backgroundColor: '#F1EBD8', borderWidth: 1, borderColor: '#D9CAA1', borderRadius: 20, padding: 18, marginTop: 4, marginBottom: 19 },

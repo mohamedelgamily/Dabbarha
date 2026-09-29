@@ -1,9 +1,11 @@
+import { t } from '@/i18n';
 import React, { useEffect } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { QueryProvider } from '@/providers/QueryProvider';
 import { useAuthStore } from '@/store/authStore';
 import { LoadingIndicator } from '@/components/common/LoadingIndicator';
 import { colors } from '@/constants/theme';
+import { LocalizationProvider } from '@/providers/LocalizationProvider';
 
 function RootNavigationLayout() {
   const { isAuthenticated, isInitialized, initializeAuth } = useAuthStore();
@@ -29,7 +31,7 @@ function RootNavigationLayout() {
   }, [isAuthenticated, isInitialized, segments, router]);
 
   if (!isInitialized) {
-    return <LoadingIndicator message="Loading Dabbarha..." color={colors.primary} />;
+    return <LoadingIndicator message={t("Loading Dabbarha...")} color={colors.primary} />;
   }
 
   return (
@@ -41,15 +43,17 @@ function RootNavigationLayout() {
     >
       <Stack.Screen name="(auth)" options={{ headerShown: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen name="+not-found" options={{ title: 'Oops!' }} />
+      <Stack.Screen name="+not-found" options={{ title: t("Oops!") }} />
     </Stack>
   );
 }
 
 export default function RootLayout() {
   return (
-    <QueryProvider>
-      <RootNavigationLayout />
-    </QueryProvider>
+    <LocalizationProvider>
+      <QueryProvider>
+        <RootNavigationLayout />
+      </QueryProvider>
+    </LocalizationProvider>
   );
 }

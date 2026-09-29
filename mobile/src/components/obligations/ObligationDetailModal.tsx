@@ -1,3 +1,4 @@
+import { t, statusLabel, categoryLabel, sourceLabel, monthCount, formatCount } from '@/i18n';
 import React from 'react';
 import {
   Modal,
@@ -68,13 +69,13 @@ export function ObligationDetailModal({
     >
       <SafeAreaView style={styles.modalContainer}>
         <View style={styles.header}>
-          <Typography style={styles.headerTitle}>Obligation Details</Typography>
+          <Typography style={styles.headerTitle}>{t("Obligation Details")}</Typography>
           <TouchableOpacity
             onPress={onClose}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             style={styles.closeButton}
             accessibilityRole="button"
-            accessibilityLabel="Close"
+            accessibilityLabel={t("Close")}
           >
             <Icon name="x" size={20} color={colors.textSecondary} />
           </TouchableOpacity>
@@ -100,10 +101,10 @@ export function ObligationDetailModal({
                   {obligation.item_name}
                 </Typography>
                 <Typography style={styles.heroProviderText}>
-                  {obligation.provider} · {obligation.category}
+                  {obligation.provider} · {categoryLabel(obligation.category)}
                 </Typography>
               </View>
-              <Badge label={obligation.status} variant={badgeVariant} />
+              <Badge label={statusLabel(obligation.status)} variant={badgeVariant} />
             </View>
 
             <View style={styles.heroDivider} />
@@ -111,8 +112,7 @@ export function ObligationDetailModal({
             <View style={styles.heroAmountsGrid}>
               <View style={styles.amountCol}>
                 <Typography style={styles.heroAmountLabel}>
-                  MONTHLY INSTALLMENT
-                </Typography>
+                  {t("MONTHLY INSTALLMENT")}</Typography>
                 <Typography style={styles.heroInstallmentAmount}>
                   {formatCurrency(obligation.monthly_installment_amount, currency)}
                 </Typography>
@@ -120,8 +120,7 @@ export function ObligationDetailModal({
 
               <View style={styles.amountColRight}>
                 <Typography style={styles.heroAmountLabel}>
-                  TOTAL COMMITMENT
-                </Typography>
+                  {t("TOTAL COMMITMENT")}</Typography>
                 <Typography style={styles.heroTotalAmount}>
                   {formatCurrency(obligation.total_amount, currency)}
                 </Typography>
@@ -132,40 +131,38 @@ export function ObligationDetailModal({
           {/* Schedule & Terms Details */}
           <View style={styles.sectionContainer}>
             <Typography style={styles.sectionHeading}>
-              Terms & Schedule
-            </Typography>
+              {t("Terms & Schedule")}</Typography>
 
             <View style={styles.infoTable}>
               <View style={styles.tableRow}>
-                <Typography style={styles.rowLabel}>Start Date</Typography>
+                <Typography style={styles.rowLabel}>{t("Start Date")}</Typography>
                 <Typography style={styles.rowValue}>
-                  {obligation.start_date}
+                  {formatDate(obligation.start_date)}
                 </Typography>
               </View>
 
               <View style={styles.tableRow}>
-                <Typography style={styles.rowLabel}>Term Duration</Typography>
+                <Typography style={styles.rowLabel}>{t("Term Duration")}</Typography>
                 <Typography style={styles.rowValue}>
-                  {obligation.term_months} Months
+                  {monthCount(obligation.term_months)}</Typography>
+              </View>
+
+              <View style={styles.tableRow}>
+                <Typography style={styles.rowLabel}>{t("Payment Due Day")}</Typography>
+                <Typography style={styles.rowValue}>
+                  {t('Day {day} of each month', { day: formatCount(obligation.due_day_of_month) })}
                 </Typography>
               </View>
 
               <View style={styles.tableRow}>
-                <Typography style={styles.rowLabel}>Payment Due Day</Typography>
-                <Typography style={styles.rowValue}>
-                  {obligation.due_day_of_month}th of every month
-                </Typography>
-              </View>
-
-              <View style={styles.tableRow}>
-                <Typography style={styles.rowLabel}>Source</Typography>
+                <Typography style={styles.rowLabel}>{t("Source")}</Typography>
                 <Typography style={[styles.rowValue, styles.capitalizeText]}>
-                  {obligation.source.replace('_', ' ')}
+                  {sourceLabel(obligation.source)}
                 </Typography>
               </View>
 
               <View style={[styles.tableRow, styles.noBorderRow]}>
-                <Typography style={styles.rowLabel}>Created</Typography>
+                <Typography style={styles.rowLabel}>{t("Created")}</Typography>
                 <Typography style={styles.rowValueMuted}>
                   {formatDate(obligation.created_at)}
                 </Typography>
@@ -176,7 +173,7 @@ export function ObligationDetailModal({
           {/* Actions */}
           <View style={styles.actions}>
             <Button
-              title="Edit Obligation"
+              title={t("Edit Obligation")}
               variant="outline"
               onPress={() => {
                 onClose();
@@ -186,7 +183,7 @@ export function ObligationDetailModal({
             />
 
             <Button
-              title="Delete Obligation"
+              title={t("Delete Obligation")}
               variant="danger"
               isLoading={isDeleting}
               onPress={() => onDelete(obligation)}
@@ -247,11 +244,11 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.08)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: spacing.md,
+    marginEnd: spacing.md,
   },
   heroTitleCol: {
     flex: 1,
-    marginRight: spacing.sm,
+    marginEnd: spacing.sm,
   },
   heroItemName: {
     fontSize: 18,

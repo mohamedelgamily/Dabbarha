@@ -1,3 +1,4 @@
+import { t, isArabic } from '@/i18n';
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -22,7 +23,7 @@ export default function TabsLayout() {
         tabBarActiveTintColor: '#D8EBB6',
         tabBarInactiveTintColor: '#94AEA7',
         tabBarStyle: [styles.tabBar, { height: 62 + Math.max(insets.bottom, 10), paddingBottom: Math.max(insets.bottom, 10) }],
-        tabBarLabelStyle: styles.tabBarLabel,
+        tabBarLabelStyle: [styles.tabBarLabel, isArabic() && { fontFamily: 'NotoNaskhArabic', fontSize: 12, lineHeight: 20, letterSpacing: 0 }],
         tabBarItemStyle: styles.tabBarItem,
         tabBarHideOnKeyboard: true,
       }}
@@ -30,8 +31,8 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Home',
-          tabBarLabel: 'Home',
+          title: t("Home"),
+          tabBarLabel: t("Home"),
           tabBarIcon: ({ color, focused }) => (
             <View style={[styles.iconWrap, focused && styles.iconWrapActive]}>
               <LayoutDashboard
@@ -46,8 +47,8 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="obligations"
         options={{
-          title: 'Obligations',
-          tabBarLabel: 'Obligations',
+          title: t("Obligations"),
+          tabBarLabel: t("Obligations"),
           tabBarIcon: ({ color, focused }) => (
             <View style={[styles.iconWrap, focused && styles.iconWrapActive]}>
               <CreditCard
@@ -62,8 +63,8 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="profile"
         options={{
-          title: 'Profile',
-          tabBarLabel: 'Profile',
+          title: t("Profile"),
+          tabBarLabel: t("Profile"),
           tabBarIcon: ({ color, focused }) => (
             <View style={[styles.iconWrap, focused && styles.iconWrapActive]}>
               <User
@@ -78,8 +79,8 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="forecast"
         options={{
-          title: 'Forecast',
-          tabBarLabel: 'Forecast',
+          title: t("Forecast"),
+          tabBarLabel: t("Forecast"),
           tabBarIcon: ({ color, focused }) => (
             <View style={[styles.iconWrap, focused && styles.iconWrapActive]}>
               <TrendingUp

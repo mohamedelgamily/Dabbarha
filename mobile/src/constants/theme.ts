@@ -17,6 +17,7 @@ export const colors = {
 
   // Neutral / Backgrounds
   background: '#FFFFFF',
+  canvas: '#F6F4EF',
   surface: '#FFFFFF',
   surfaceAlt: '#F8FAFC',
   surfaceElevated: '#FFFFFF',
