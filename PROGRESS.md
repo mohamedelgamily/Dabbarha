@@ -4,9 +4,11 @@
 
 Project: Dabbarha / دبّرها
 
-Current phase: Phase 1i — Optional Financial Profile
+Current phase: Phase 2b.3 — Dependency Security Updates
 
-Status: completed after verification
+Status: isolated dependency updates verified; Linux execution/deployment and frontend cleanup pending
+
+The current v1.0 backend has no AI/chat endpoint, provider, tools, memory or RAG. Earlier AI implementation and Phase 2b.1 entries below are historical records; Phase 2b.2 supersedes their feature-specific behavior. JWT/environment security hardening remains active.
 
 ## What Was Built
 
@@ -713,19 +715,73 @@ Commit:
 Next Planned Step:
 Phase 1j — Frontend Integration / Production Readiness
 
+### Phase 2b.1 — JWT and Environment Configuration Hardening
+
+Implemented and verified on `mohamed/backend`, starting from `2b13e37`.
+
+- Removed the public development JWT signing-key fallback. All environments now require an explicitly configured key; there is no generated or legacy fallback key.
+- Added validated development/test/production settings; unset APP_ENV safely means production. Configuration errors omit supplied values, and settings repr does not reveal credentials.
+- Reject missing/empty/known-placeholder, undersized, low-diversity, repeated/sequential and template JWT keys; keep accepted secret bytes unchanged. These are weak-value checks, not proof of randomness.
+- Preserved HS256, sub/exp token shape, the 60-minute default lifetime, JSON registration/login/token responses, existing Argon2id hashing, optional financial profiles and protected-route ownership/authentication.
+- Verified actual environment loading: the application reads process variables only; explicitly selected Uvicorn `--env-file` files load before app import. Process variables win, and no automatic dotenv discovery occurs. No dependencies were added or updated.
+- Defaulted docs/OpenAPI/ReDoc to disabled in production and enabled in development/test, with an explicit API_DOCS_ENABLED override. Kept debug false and existing public health behavior.
+- Required CHAT_MOCK_ENABLED opt-in for local/test mock success; production rejects enabling it. Missing real-provider initialization now signals provider_error so real fallback is attempted. Disabled mocks/provider failure produce a safe HTTP 503; successful chat JSON remains unchanged. This is a configuration gate, not the broader Phase 2c protocol/confirmation repair.
+- Ignored `.env.*` and `.envrc` while preserving `.env.example` and environment-specific `.example` templates. Added placeholder-only environment/configuration documentation.
+- Isolated tests from local credentials and persistent databases using an ephemeral test-process signing key, empty provider keys, explicit mock opt-in and in-memory SQLite.
+- Added regression coverage for missing/empty/default/placeholder/weak/valid secrets; safe startup errors; forged-token rejection and legitimate login; unchanged token lifetime/shape; docs/environment policy; actual Uvicorn file loading and precedence; and production-safe chat fallback.
+- Corrected the pre-existing tamper test to alter significant signature bits rather than potentially equivalent base64url padding bits. This does not remediate the dependency advisory about noncanonical token text.
+- Verification: `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider` — **454 passed, 2 warnings in 27.48s**. Existing Starlette/httpx and Google SDK/Pydantic warnings remain. `git diff --check` passed; branch/HEAD unchanged; no staged changes.
+- No `.env` values, provider keys, existing signing secrets, packages, migrations, persistent user data, financial calculations or frontend files were changed. No paid-provider call, Git staging, commit, push or merge was performed.
+- Deployment consequence: startup now fails for missing/rejected keys. Operators must supply an existing secure key or separately approve remediation; changing a deployed key invalidates its tokens. No automatic rotation or session invalidation was performed.
+- Deferred: dependency advisories (including PyJWT parser issues), rate limiting, confirmation lifecycle, provider protocol/history, budget controls, validation/database fixes and admin scope. No production-readiness claim is made for this batch alone.
+
+### Phase 2b.2 — Remove AI Chatbot from v1.0
+
+Product decision: AI chat is outside v1.0, not a temporary outage. Inspected and preserved all existing uncommitted Phase 2b.1 security changes before removal; branch/HEAD remain `mohamed/backend` / `2b13e37`.
+
+- Recorded an exact pre-deletion inventory: 32 chatbot-only source/test/RAG-document files, including the untracked Phase 2b.1 chat-policy test. Removed only these sources plus 47 compiled cache files belonging to retired modules/tests.
+- Removed `/chat` registration/route, Gemini/Groq integrations, financial tool/confirmation layer, conversation repository/models/schemas, local RAG modules and the RAG-owned documentation corpus. `/chat` paths now return 404, with no fallback or feature flag that re-enables them.
+- Removed `google-genai` and `groq` from runtime requirements; no unrelated requirement was upgraded/removed and no developer virtualenv uninstall was run.
+- Removed AI/mock/provider/RAG settings, config exports, template variables, fixture flags and AI-only settings tests. The actual local environment files and provider credentials were not read, altered, printed or rotated.
+- Preserved core financial engines/routes/schemas, user/obligation data, Argon2id/JWT code, HS256/sub/exp/60-minute defaults, explicit env-file handling, startup-secret validation, docs/debug policy and secret-file ignores. Verified 25 protected files byte-for-byte and all JWT/general settings validators unchanged from phase-start source snapshots.
+- Removed only the User conversation relationship and conversation model exports. Retained `chatbot_entry` as historical obligation provenance and compatibility metadata; no financial row was relabeled or deleted.
+- Preserved both applied Alembic revisions byte-for-byte. Added a narrow autogenerate filter for reflected, metadata-absent archival conversation tables so model removal does not propose drops. No new revision or destructive migration was created or run.
+- Added six v1 release-boundary regressions: route/OpenAPI removal; startup with provider/retired-module import blockers; static dependency/import checks; financial CRUD/calculations and cross-user denial with synthetic legacy conversation rows; real Alembic autogenerate checking; and narrowly scoped filtering. Migration tests replay only existing upgrades on disposable in-memory SQLite.
+- Full remaining suite: `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider` — **301 passed, 1 warning in 23.84s**. Focused release/settings/security/auth run: **149 passed, 1 warning in 14.68s**. Auth/settings/security account for 143 of the final passing cases. The existing Starlette/httpx warning remains; Google SDK warning no longer occurs.
+- `git diff --check` passed; no staging, commit, push, branch change, merge, production/local DB operation or external provider call occurred. Both tracked and untracked files were reviewed.
+- Added `docs/conversation-retirement.md` for separately approved retention/backup/forward-migration retirement and `docs/frontend-v1-handoff.md` with exact owner cleanup targets. Frontend worktree was inspected read-only and remains unchanged; its AI screen/shortcut/client cleanup is still required before public v1.0 release.
+- Residual non-AI security work remains: dependency advisories, rate limiting, password/session policy, request/calendar/money validation, SQLite integrity, private caching/headers, operational readiness and archival-data retention. AI execution/injection/confirmation/cost risks are removed from this backend runtime rather than deferred as v1.0 features.
+
+### Phase 2b.3 — Dependency Security Updates
+
+Target confirmed by the owner: Ubuntu Server 24.04 LTS x86_64, current security-patched CPython 3.12, FastAPI/Uvicorn; PostgreSQL deployment/driver/schema work remains separate. Preserved existing local `.venv` and all uncommitted Phase 2b.1/2b.2 source changes.
+
+- Built a clean isolated verification environment from the remaining backend requirements, with a separate pip-audit tool environment. No manual package purge or changes to the original `.venv` were performed.
+- Updated only PyJWT 2.13.0 → 2.15.1, certifi 2026.7.22 → 2026.10.19 and Mako 1.4.1 → 1.4.3 among retained application/test distributions. Bootstrap pip in the new environment is 26.2.2. No major upgrade was selected; FastAPI, SQLAlchemy, Alembic, Uvicorn, Pydantic and Argon2 dependencies remain at the previously tested versions.
+- The clean rebuild omits 11 obsolete distributions: charset-normalizer, cryptography, distro, google-auth, google-genai, groq, pyasn1, pyasn1-modules, requests, sniffio and urllib3. urllib3 is not a remaining backend dependency and was omitted rather than reintroduced merely to update it.
+- Raised the direct PyJWT security floor; added exact 40-package Python 3.12 constraints and an Ubuntu x86_64 wheel hash lock. Root requirements resolve to exactly the tested versions. Linux marker/extras closure, wheel availability and published SHA-256 values were checked; the Linux lock replayed offline with binaries and mandatory hashes. Local macOS Argon2 binding built from source; the Linux target uses its abi3 wheel.
+- New regression tests first reproduced uncaught RecursionError under old PyJWT. After the package update, nested/malformed tokens raise safe JWT errors and protected requests return 401. No app exception workaround, signature algorithm, claims, default expiration, password hash or API/financial calculation changes were introduced.
+- Cross-version synthetic compatibility probe: a token and Argon2id hash generated under the original environment remain valid under the updated environment with the same synthetic credentials. No real key, token or password data was used.
+- Before: OSV scanned 52 installed distributions and identified 19 distinct advisories across PyJWT/certifi/Mako/urllib3. Pip-audit 2.10.1 with OSV reported 38 alias records for those same issues. After: both scan paths checked 41 distributions including pip, with zero known advisories and no skipped packages in pip-audit. No claim is made about unpublished vulnerabilities or the untouched old environment.
+- Final full suite in the clean environment: `PYTHONDONTWRITEBYTECODE=1 /Users/mohamedelgamily/Documents/Codex/2026-10-21/files-pasted-by-the-user-you/work/batch3/verify-venv/bin/python -m pytest -q -p no:cacheprovider` — **307 passed, 1 existing Starlette warning in 23.06s**. `pip check` reported no broken requirements. Existing in-memory migration/legacy-data and financial/ownership regressions pass.
+- Verified local execution uses existing CPython 3.12.0 + SQLite. Linux compatibility checks are resolution/metadata/artifact checks, not execution on Ubuntu. No Docker/Podman runtime was available. Deployment must use a current security-patched interpreter and execute the suite on Linux before release; PostgreSQL integration was not attempted.
+- Added `docs/dependencies.md` for clean installation, hash-lock scope, scan evidence and limitations. Update/use a newly built environment to receive fixes: the original `.venv` still holds its older vulnerable/retired packages by explicit instruction.
+- No application/migration/financial source, frontend, real environment secret or persistent data changed. No dependency installation/scan invoked chatbot services. `git diff --check` and status review passed; no staging, commit, push, merge, rebase, reset, stash or branch change occurred.
+- Dependency checks do not establish production readiness. Remaining non-dependency hardening, Linux execution, current Python patching at deployment, PostgreSQL integration and Jomana's frontend removal remain separate work.
+
 ## What Was Intentionally NOT Built Yet
 
 - Refresh tokens
 - Full logout / token invalidation
 - Additional dashboard endpoints beyond summary
-- Extra API endpoints beyond completed auth, obligation CRUD, forecast, dashboard, affordability, and chat
+- Extra API endpoints beyond completed auth, obligation CRUD, forecast, dashboard and affordability
 - Additional infrastructure or abstractions
 
 ## Next Planned Step
 
-Phase 1j — Frontend Integration / Production Readiness
+Coordinate Jomana's v1.0 frontend cleanup using `docs/frontend-v1-handoff.md`; continue separately approved non-AI backend security hardening. Do not resume the old chatbot-repair phase for v1.0.
 
-## Design Decision
+## Historical Design Decisions (superseded where Phase 2b.2 applies)
 
 The backend starts as a modular FastAPI API. Forecasting logic now lives in `app/core/forecast.py` as a pure reusable module before any API or database integration.
 
@@ -858,6 +914,30 @@ Conversation memory provides context for the LLM but is never authoritative fina
 - Verified validation/security tests for the new endpoint.
 - Verified `pytest -q`: 365 passed, 1 skipped, 1 warning.
 - Verified `git diff --check`: passed cleanly.
+
+## Phase 2b.4 — Input Validation & Database Integrity (verified)
+
+- Preserved the uncommitted Phase 2b.1–3 work on `mohamed/backend`, HEAD `2b13e37c4ed6800f69915a97416d97b25bf0dd12`; no staging, commits, branch changes, frontend changes, real environment edits, persistent data writes or schema migrations.
+- Centralized request money policy matching Numeric(12,2): finite 0–9,999,999,999.99 with at most two fractional digits; reject booleans, malformed, null, negative, excessive and overprecision input with 422.
+- Applied the explicitly approved 1–1,200 month duration limit and calendar-overflow guards. Kept forecast's 1–60 month range and existing monthly calculation semantics. No down-payment fields or price/payment relationship rules.
+- Trimmed required Unicode text before existing length checks; rejected explicit null updates and validated final merged obligation state before mutation. Optional financial-profile defaults and valid API contracts remain intact.
+- Enabled SQLite foreign keys on every new application connection. Added explicit profile/request rollback paths and safe SQLAlchemy error responses; validation errors no longer echo raw inputs (including non-finite JSON numbers).
+- Added 126 regression cases, including rollback/recovery after real failed flushes and operational errors, cross-user ownership, extreme dates/integers, legacy duration read compatibility, optional profile and monetary boundaries.
+- Full clean Phase 2b.3 environment suite: **433 passed, 1 existing Starlette/httpx warning in 28.68s**. `pip check`: no broken requirements. `git diff --check`: passed. Original `.venv`, migrations, dependency files and financial engine sources preserved.
+- Read-only frontend contract review completed; valid requests remain compatible. New amount/duration restrictions may return 422 for inputs currently accepted by client forms. Legacy invalid records are not rewritten; updates must satisfy merged-state policy.
+- PostgreSQL execution, legacy-data remediation, direct-SQL precision enforcement and broader audit items remain deferred. See `docs/validation-integrity.md` for exact limits and remaining risks. Dependency scan was not rerun because this phase made no dependency changes.
+
+## Phase 2b.5 — Rate Limiting & API Security (verified)
+
+- User approved the Redis architecture and configurable defaults. Preserved Phases 2b.1–2b.4 on `mohamed/backend`, HEAD `2b13e37c4ed6800f69915a97416d97b25bf0dd12`; no staging, commits, pushes, frontend, real secrets, persistent records, migrations or financial formulas changed.
+- Added atomic Redis sliding-window quotas shared by workers: failed/in-flight login 5/account+IP/15 minutes, total login 30/IP/15 minutes, registration 5/IP/hour, writes 60/user/minute, reads 120/user/minute, plus forecast 30/user/minute and affordability 10/user/minute. Keys contain HMAC digests, never raw identifiers. Safe 429 includes Retry-After.
+- Production requires private Redis and a separate explicit HMAC key; memory mode is rejected. Missing configuration/connectivity blocks startup; runtime backend failures return safe 503 instead of bypassing limits. Memory storage is bounded and restricted to development/test.
+- Added equivalent dummy Argon2 verification for unknown accounts, per-worker concurrency 2 with a 0.25-second bounded wait, finite login reservations and safe overload handling. Existing registration 409 enumeration risk is explicitly retained, as approved; no account flow, stored hash or token/session changes.
+- Added 64-KiB actual/declaration body limits, 64-level JSON guard, 10-second body-read deadline, safe errors/log redaction and no-store/nosniff/no-referrer response headers. CORS remains closed. Forwarded identity comes only through the explicitly trusted Uvicorn/proxy connection context.
+- Added inactive private Redis/Caddy and production environment templates; no deployment was activated. HSTS belongs to the verified HTTPS proxy boundary. See `docs/api-security.md` for all settings, counting rules and remaining risks.
+- Added redis 8.1.0 only; all existing dependency versions preserved. Rebuilt a new clean environment, verified 41 Linux CPython 3.12 wheel hashes/marker closure and offline lock replay; pip check clean. OSV pip-audit: 42 distributions, zero known advisories, zero skips.
+- Verification: **485 passed, 1 warning in 32.01s**, no skips, in the new clean Phase 2b.5 environment. Includes all 433 previous tests plus 52 new cases. Actual disposable Redis 7.4.11 (official archive checksum verified, TCP disabled) tests concurrency, expiry, startup/outages and three independent processes sharing a quota. `git diff --check` passed; staged diff empty and frontend clean.
+- Local CPython 3.12.0/macOS + SQLite only. Linux wheels were verified; actual Ubuntu/PostgreSQL/Caddy deployment, load sizing, edge DDoS protection, Redis history durability/failover and broader audit items remain separate work. No production-readiness claim.
 
 ## Future Updates
 
