@@ -474,27 +474,115 @@ def test_additive_migration_and_downgrade_only_disposable_db(session_db):
             "down_payment_amount", "down_payment_date", "down_payment_paid", "schedule_version",
         } <= {column["name"] for column in inspect(session_db).get_columns("obligations")}
         with Session(session_db) as db:
-            preexisting = User(name="Before deletion migration", email="pre-migration@example.com",
-                               password_hash="existing-hash")
-            db.add(preexisting); db.commit(); preexisting_id = preexisting.id
+            db.execute(text("INSERT INTO users (name, email, password_hash, monthly_income, fixed_expenses, currency) "
+                            "VALUES ('Before deletion migration', 'pre-migration@example.com', 'existing-hash', 0, 0, 'EGP')"))
+            db.commit()
+            preexisting_id = db.scalar(text("SELECT id FROM users WHERE email='pre-migration@example.com'"))
         command.upgrade(cfg,"head")
         assert "account_id_sequence" in inspect(session_db).get_table_names()
+        assert "admin_audit_events" in inspect(session_db).get_table_names()
+        assert {"admin_role", "admin_totp_nonce", "admin_totp_ciphertext", "admin_totp_key_id", "admin_totp_last_step"} <= {
+            column["name"] for column in inspect(session_db).get_columns("users")}
         from app.models.account_id_sequence import AccountIdSequence
         with Session(session_db) as db:
             assert db.get(AccountIdSequence, 1).last_id == preexisting_id
+            assert db.get(User, preexisting_id).admin_role == "user"
         with Session(session_db) as db:
-            user=User(name="Preserved",email="preserved@example.com",password_hash="existing-hash")
-            db.add(user);db.commit()
+            db.execute(text("INSERT INTO users (name, email, password_hash, monthly_income, fixed_expenses, currency) "
+                            "VALUES ('Preserved', 'preserved@example.com', 'existing-hash', 0, 0, 'EGP')"))
+            db.commit()
         command.downgrade(cfg,"17d4d0e39961")
         assert "auth_sessions" not in inspect(session_db).get_table_names()
         assert not ({"notification_preferences", "notification_devices", "payment_occurrences",
                      "payment_occurrence_events", "notifications", "notification_deliveries"}
                     & set(inspect(session_db).get_table_names()))
         assert "account_id_sequence" not in inspect(session_db).get_table_names()
+        assert "admin_audit_events" not in inspect(session_db).get_table_names()
+        assert "admin_role" not in {column["name"] for column in inspect(session_db).get_columns("users")}
         assert "obligation_installments" not in inspect(session_db).get_table_names()
         assert "purchase_price" not in {column["name"] for column in inspect(session_db).get_columns("obligations")}
-        with Session(session_db) as db:assert db.scalar(select(User.password_hash))=="existing-hash"
+        with Session(session_db) as db:assert db.scalar(text("SELECT password_hash FROM users"))=="existing-hash"
         command.upgrade(cfg,"head")
+        assert "admin_audit_events" in inspect(session_db).get_table_names()
+
+
+def test_admin_totp_step_up_is_session_bound_audited_and_replay_safe(session_api, monkeypatch):
+    import time
+    from app.core.admin_settings import AdminSettings
+    from app.models.admin_audit import AdminAuditEvent
+    from app.services.admin_security import encrypt_totp_secret, generate_totp_secret, totp_code
+    client, service, engine, uid = session_api
+    key = secrets.token_bytes(32)
+    policy = AdminSettings(enabled=True, totp_encryption_key=key)
+    monkeypatch.setattr(app.state, "admin_settings", policy)
+    secret = generate_totp_secret()
+    nonce, ciphertext = encrypt_totp_secret(secret, uid, policy)
+    with Session(engine) as db:
+        user = db.get(User, uid)
+        user.admin_role = "admin"
+        user.admin_totp_nonce, user.admin_totp_ciphertext = nonce, ciphertext
+        user.admin_totp_key_id = policy.totp_key_id
+        db.commit()
+    pair = service.create(engine, uid, "test-device")
+    now = int(time.time())
+    code = totp_code(secret, now // 30)
+    headers = bearer(pair)
+    response = client.post("/admin/auth/step-up", json={"code": code}, headers=headers)
+    assert response.status_code == 200
+    admin_token = response.json()["access_token"]
+    admin_headers = {"Authorization": "Bearer " + admin_token}
+    assert client.get("/admin/auth/me", headers=admin_headers).status_code == 200
+    assert client.post("/admin/auth/step-up", json={"code": code}, headers=headers).status_code == 401
+    with Session(engine) as db:
+        events = db.scalars(select(AdminAuditEvent).order_by(AdminAuditEvent.id)).all()
+        assert [event.outcome for event in events] == ["success", "failure"]
+        assert all(not hasattr(event, "code") and not hasattr(event, "token") for event in events)
+        user = db.get(User, uid)
+        user.admin_role = "user"  # A live role downgrade invalidates the still-unexpired step-up token.
+        db.commit()
+    assert client.get("/admin/auth/me", headers=admin_headers).status_code == 403
+
+
+def test_admin_rejects_legacy_access_tokens(session_api, monkeypatch):
+    from app.core.admin_settings import AdminSettings
+    client, _, _, uid = session_api
+    monkeypatch.setattr(app.state, "admin_settings", AdminSettings(enabled=True,
+        totp_encryption_key=secrets.token_bytes(32)))
+    legacy = create_access_token(str(uid))
+    response = client.post("/admin/auth/step-up", json={"code": "000000"}, headers=bearer({"access_token": legacy}))
+    assert response.status_code == 401
+
+
+def test_admin_endpoints_are_hidden_when_feature_is_off(session_api, monkeypatch):
+    from app.core.admin_settings import AdminSettings
+    client, service, engine, uid = session_api
+    monkeypatch.setattr(app.state, "admin_settings", AdminSettings(enabled=False))
+    response = client.post("/admin/auth/step-up", json={"code": "000000"})
+    assert response.status_code == 404
+
+
+def test_admin_totp_concurrent_replay_only_one_step_up(session_api, monkeypatch):
+    import time
+    from app.core.admin_settings import AdminSettings
+    from app.services.admin_security import encrypt_totp_secret, generate_totp_secret, totp_code
+    client, service, engine, uid = session_api
+    policy = AdminSettings(enabled=True, totp_encryption_key=secrets.token_bytes(32))
+    monkeypatch.setattr(app.state, "admin_settings", policy)
+    secret = generate_totp_secret()
+    nonce, ciphertext = encrypt_totp_secret(secret, uid, policy)
+    with Session(engine) as db:
+        user = db.get(User, uid)
+        user.admin_role = "superadmin"
+        user.admin_totp_nonce, user.admin_totp_ciphertext = nonce, ciphertext
+        user.admin_totp_key_id = policy.totp_key_id
+        db.commit()
+    pair = service.create(engine, uid, "parallel-test")
+    headers = bearer(pair)
+    code = totp_code(secret, int(time.time()) // 30)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(lambda _: client.post("/admin/auth/step-up", json={"code": code}, headers=headers).status_code,
+                                range(2)))
+    assert sorted(results) == [200, 401]
 
 
 def _worker_refresh(arguments):
@@ -694,6 +782,11 @@ def _seed_account_private_data(engine, service, user_id):
 def test_account_deletion_cascades_all_private_rows_and_invalidates_old_tokens(session_api):
     client, service, engine, user_id = session_api
     pair, _ = _seed_account_private_data(engine, service, user_id)
+    from app.models.admin_audit import AdminAuditEvent
+    with Session(engine) as db:
+        db.add(AdminAuditEvent(actor_user_id=user_id, target_user_id=user_id,
+                               action="admin_totp_step_up", outcome="failure"))
+        db.commit()
     legacy_token = create_access_token(str(user_id))
     headers = bearer(pair)
     assert client.get("/auth/me", headers=headers).status_code == 200
@@ -719,6 +812,10 @@ def test_account_deletion_cascades_all_private_rows_and_invalidates_old_tokens(s
         assert connection.scalar(text("SELECT COUNT(*) FROM conversation_messages")) == 0
         # Only a global, non-user-linked allocator remains.
         assert connection.scalar(text("SELECT COUNT(*) FROM account_id_sequence")) in {0, 1}
+    with Session(engine) as db:
+        audit_event = db.scalar(select(AdminAuditEvent))
+        assert audit_event is not None
+        assert audit_event.actor_user_id is None and audit_event.target_user_id is None
 
     # Repeating with a stale credential is harmless and cannot recreate data.
     assert _deletion_auth(client, pair["access_token"]).status_code == 401

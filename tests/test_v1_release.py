@@ -76,7 +76,7 @@ def test_application_has_no_retired_imports_or_provider_requirements() -> None:
     assert set(Base.metadata.tables) == {
         'users', 'obligations', 'obligation_installments', 'auth_sessions',
         'auth_refresh_tokens', 'legacy_access_revocations',
-        'account_id_sequence',
+        'account_id_sequence', 'admin_audit_events',
     } | phase2d_tables
     required_owners = {
         'notification_preferences': {'users.id'},
@@ -89,6 +89,8 @@ def test_application_has_no_retired_imports_or_provider_requirements() -> None:
     for table_name, owner_targets in required_owners.items():
         targets = {foreign_key.target_fullname for foreign_key in Base.metadata.tables[table_name].foreign_keys}
         assert owner_targets <= targets, f'{table_name} is missing ownership/parent foreign keys'
+    audit_targets = {foreign_key.target_fullname for foreign_key in Base.metadata.tables['admin_audit_events'].foreign_keys}
+    assert audit_targets == {'users.id'}
 
 
 @pytest.fixture

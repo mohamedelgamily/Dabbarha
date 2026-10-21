@@ -256,6 +256,15 @@ def test_ip_guard_and_forged_headers_cannot_change_source(api, monkeypatch):
     assert source_ip({"client":("::ffff:192.168.1.1",1)})=="192.168.1.1"
 
 
+def test_admin_totp_step_up_uses_shared_account_ip_attempt_limits(api, monkeypatch):
+    client, _, _, _ = api
+    runtime(monkeypatch, login_ip_limit=2)
+    for index in range(3):
+        response = client.post("/admin/auth/step-up", json={"code": "000000"},
+                               headers={"X-Forwarded-For": f"10.0.0.{index}"})
+        assert response.status_code == (404 if index < 2 else 429)
+
+
 def test_registration_guard_counts_invalid_and_duplicate_requests(api, monkeypatch):
     client, _, _, _ = api
     runtime(monkeypatch, registration_limit=2)

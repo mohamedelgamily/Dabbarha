@@ -52,11 +52,16 @@ def decode_access_token(token: str) -> dict[str, Any]:
         from uuid import UUID
         try:
             if (type(payload.get("ver")) is not int or payload["ver"] != 2
-                or payload.get("token_use") != "access" or type(payload.get("iat")) is not int
+                or payload.get("token_use") not in {"access", "admin_stepup"} or type(payload.get("iat")) is not int
                 or type(payload.get("exp")) is not int or payload["iat"] >= payload["exp"]
                 or str(UUID(payload["sid"])) != payload["sid"]
                 or str(UUID(payload["jti"])) != payload["jti"]):
                 raise ValueError()
+            if payload.get("token_use") == "admin_stepup":
+                if (payload.get("admin_role") not in {"admin", "superadmin"}
+                    or type(payload.get("admin_mfa_at")) is not int
+                    or payload["admin_mfa_at"] != payload["iat"]):
+                    raise ValueError()
         except (ValueError, TypeError, KeyError, AttributeError):
             raise jwt.InvalidTokenError("Invalid session access claims") from None
     return payload

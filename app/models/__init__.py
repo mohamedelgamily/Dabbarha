@@ -14,3 +14,6 @@ from app.models.notifications import (
 )
 __all__ += ["Notification", "NotificationDelivery", "NotificationPreference",
             "PaymentOccurrence", "PaymentOccurrenceEvent", "PushDevice"]
+
+from app.models.admin_audit import AdminAuditEvent
+__all__ += ["AdminAuditEvent"]

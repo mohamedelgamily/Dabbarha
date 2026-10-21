@@ -13,6 +13,9 @@ os.environ.update(
     JWT_ALGORITHM="HS256",
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES="60",
     API_DOCS_ENABLED="true",
+    ADMIN_API_ENABLED="false",
+    ADMIN_TOTP_KEY_ID="v1",
+    ADMIN_STEPUP_TOKEN_MINUTES="5",
     DATABASE_URL="sqlite:///:memory:",
 )
 
