@@ -1,7 +1,7 @@
 from collections.abc import Generator
 
 import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
@@ -16,11 +16,15 @@ def get_db() -> Generator[Session, None, None]:
     db = SessionLocal()
     try:
         yield db
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
 
 
 def get_current_user(
+    request: Request,
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> User:
@@ -36,6 +40,8 @@ def get_current_user(
         if subject is None:
             raise credentials_exception
         user_id = int(subject)
+        if not -9223372036854775808 <= user_id <= 9223372036854775807:
+            raise credentials_exception
     except (jwt.PyJWTError, ValueError):
         raise credentials_exception
 
@@ -43,4 +49,5 @@ def get_current_user(
     if user is None:
         raise credentials_exception
 
+    request.app.state.security.financial(request, user.id)
     return user

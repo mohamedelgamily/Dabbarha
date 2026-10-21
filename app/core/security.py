@@ -1,6 +1,8 @@
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+import secrets
+
 import jwt
 from pwdlib import PasswordHash
 
@@ -11,6 +13,8 @@ from app.core.config import (
 )
 
 password_hash = PasswordHash.recommended()
+# Random process-held dummy material; never persisted or logged. Matches real Argon2 parameters.
+DUMMY_PASSWORD_HASH = password_hash.hash(secrets.token_urlsafe(48))
 
 
 def hash_password(password: str) -> str:

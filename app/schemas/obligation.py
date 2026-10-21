@@ -1,43 +1,56 @@
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from app.schemas.validation import DueDay, Money, TermMonths, TrimmedText, validate_calendar_window
 
 ObligationStatus = Literal["active", "completed", "late", "defaulted"]
 ObligationSource = Literal["manual_entry", "chatbot_entry"]
 
 
 class ObligationCreate(BaseModel):
-    provider: str = Field(..., min_length=1, max_length=120)
-    item_name: str = Field(..., min_length=1, max_length=160)
-    category: str = Field(..., min_length=1, max_length=80)
-    total_amount: Decimal = Field(..., ge=Decimal("0.00"))
-    monthly_installment_amount: Decimal = Field(..., ge=Decimal("0.00"))
+    provider: TrimmedText = Field(..., min_length=1, max_length=120)
+    item_name: TrimmedText = Field(..., min_length=1, max_length=160)
+    category: TrimmedText = Field(..., min_length=1, max_length=80)
+    total_amount: Money
+    monthly_installment_amount: Money
     start_date: date
-    term_months: int = Field(..., gt=0)
-    due_day_of_month: int = Field(..., ge=1, le=31)
+    term_months: TermMonths
+    due_day_of_month: DueDay
     status: ObligationStatus = "active"
     source: ObligationSource = "manual_entry"
 
     model_config = ConfigDict(extra="forbid")
 
+    @model_validator(mode="after")
+    def supported_calendar(self) -> "ObligationCreate":
+        validate_calendar_window(self.start_date, self.term_months)
+        return self
+
+
 class ObligationUpdate(BaseModel):
-    provider: str | None = Field(default=None, min_length=1, max_length=120)
-    item_name: str | None = Field(default=None, min_length=1, max_length=160)
-    category: str | None = Field(default=None, min_length=1, max_length=80)
-    total_amount: Decimal | None = Field(default=None, ge=Decimal("0.00"))
-    monthly_installment_amount: Decimal | None = Field(
-        default=None,
-        ge=Decimal("0.00"),
-    )
+    provider: TrimmedText | None = Field(default=None, min_length=1, max_length=120)
+    item_name: TrimmedText | None = Field(default=None, min_length=1, max_length=160)
+    category: TrimmedText | None = Field(default=None, min_length=1, max_length=80)
+    total_amount: Money | None = None
+    monthly_installment_amount: Money | None = None
     start_date: date | None = None
-    term_months: int | None = Field(default=None, gt=0)
-    due_day_of_month: int | None = Field(default=None, ge=1, le=31)
+    term_months: TermMonths | None = None
+    due_day_of_month: DueDay | None = None
     status: ObligationStatus | None = None
     source: ObligationSource | None = None
 
     model_config = ConfigDict(extra="forbid")
+
+    @field_validator("*", mode="before")
+    @classmethod
+    def reject_explicit_null(cls, value: Any) -> Any:
+        if value is None:
+            raise ValueError("Value cannot be null; omit the field to leave it unchanged.")
+        return value
+
 
 class ObligationResponse(BaseModel):
     id: int

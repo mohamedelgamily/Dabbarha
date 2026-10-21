@@ -1,4 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.exceptions import RequestValidationError
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -114,6 +116,17 @@ def update_obligation(
         )
 
     update_data = obligation_in.model_dump(exclude_unset=True)
+
+    # Validate before mutating the ORM object, including fields omitted by the client.
+    merged = {field: getattr(obligation, field) for field in ObligationCreate.model_fields}
+    merged.update(update_data)
+    try:
+        ObligationCreate.model_validate(merged)
+    except ValidationError as exc:
+        errors = exc.errors(include_input=False, include_context=False, include_url=False)
+        for error in errors:
+            error["loc"] = ("body", *error["loc"])
+        raise RequestValidationError(errors) from None
 
     for field, value in update_data.items():
         if isinstance(value, str):

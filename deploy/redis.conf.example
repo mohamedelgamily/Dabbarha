@@ -1,0 +1,16 @@
+# INACTIVE TEMPLATE. Dedicated private limiter instance; review paths/permissions before use.
+# No TCP listener, including port 6379. Only the app/Redis service group may access the socket.
+port 0
+bind 127.0.0.1 ::1
+protected-mode yes
+unixsocket /run/dabbarha/limiter.sock
+unixsocketperm 770
+# Create directories under service supervision; never run the service as root.
+dir /var/lib/dabbarha-limiter
+maxmemory 64mb
+maxmemory-policy noeviction
+appendonly yes
+appendfsync everysec
+save ""
+# everysec can lose recent quota history on a crash. See docs/api-security.md.
+# Use service-manager logs; never enable MONITOR, credential/config dumps or request-body logs.

@@ -2,6 +2,10 @@
 **pycache**/
 *.py[cod]
 .env
+.env.*
+.envrc
+!.env.example
+!.env.*.example
 .DS_Store
 .pytest_cache/
 *.db

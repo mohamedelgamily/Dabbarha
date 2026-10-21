@@ -5,6 +5,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
+from app.schemas.validation import Money, TrimmedText
+
 
 class UserCreate(BaseModel):
     # Financial information (monthly_income, fixed_expenses, currency) is intentionally
@@ -12,7 +14,7 @@ class UserCreate(BaseModel):
     # Defaults on the User model (income=0, expenses=0, currency="EGP") apply on register.
     model_config = ConfigDict(extra="forbid")
 
-    name: str = Field(..., min_length=1, max_length=120)
+    name: TrimmedText = Field(..., min_length=1, max_length=120)
     email: EmailStr
     password: str = Field(..., min_length=1)
 
@@ -27,8 +29,8 @@ class UserUpdate(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    monthly_income: Decimal | None = Field(default=None, ge=Decimal("0.00"))
-    fixed_expenses: Decimal | None = Field(default=None, ge=Decimal("0.00"))
+    monthly_income: Money | None = None
+    fixed_expenses: Money | None = None
     currency: str | None = Field(default=None, min_length=1, max_length=3)
 
     @field_validator("monthly_income", "fixed_expenses", mode="before")

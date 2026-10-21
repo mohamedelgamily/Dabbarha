@@ -9,6 +9,7 @@ from app.core.forecast import build_forecast
 from app.models.obligation import Obligation
 from app.models.user import User
 from app.schemas.forecast import ForecastResponse
+from app.schemas.validation import MAX_FORECAST_MONTHS, validate_calendar_window
 
 router = APIRouter()
 
@@ -22,7 +23,7 @@ router = APIRouter()
 def get_forecast(
     request: Request,
     start_month: date = Query(...),
-    months: int = Query(..., gt=0, le=60),
+    months: int = Query(..., gt=0, le=MAX_FORECAST_MONTHS),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> ForecastResponse:
@@ -33,6 +34,11 @@ def get_forecast(
             status_code=422,
             detail="Only start_month and months query parameters are accepted",
         )
+
+    try:
+        validate_calendar_window(start_month, months)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
 
     stmt = select(Obligation).where(Obligation.user_id == current_user.id)
     obligations = list(db.scalars(stmt).all())

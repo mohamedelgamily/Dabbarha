@@ -774,3 +774,38 @@ def test_obligation_creation_does_not_require_financial_information(
     data = create_response.json()
     assert data["item_name"] == "Phone Installment"
     assert Decimal(str(data["monthly_installment_amount"])) == Decimal("1000.00")
+
+
+def test_public_default_forgery_rejected_but_legitimate_json_login_works(client: TestClient) -> None:
+    import jwt
+
+    response = client.post('/auth/register', json={
+        'name': 'JWT regression', 'email': 'jwt.regression@example.com', 'password': 'ExistingPassword123!',
+    })
+    assert response.status_code == 201
+    user_id = response.json()['id']
+    forged = jwt.encode(
+        {'sub': str(user_id), 'exp': datetime.now(timezone.utc) + timedelta(minutes=60)},
+        'development-only-insecure-jwt-secret-change-me', algorithm='HS256',
+    )
+    assert client.get('/auth/me', headers={'Authorization': f'Bearer {forged}'}).status_code == 401
+    login = client.post('/auth/login', json={'email': 'jwt.regression@example.com', 'password': 'ExistingPassword123!'})
+    assert login.status_code == 200
+    assert set(login.json()) == {'access_token', 'token_type'}
+    assert login.json()['token_type'] == 'bearer'
+    profile = client.get('/auth/me', headers={'Authorization': 'Bearer ' + login.json()['access_token']})
+    assert profile.status_code == 200
+    assert profile.json()['id'] == user_id
+    assert Decimal(profile.json()['monthly_income']) == Decimal('0.00')
+
+
+def test_deeply_nested_jwt_header_returns_401_instead_of_500(client: TestClient) -> None:
+    import base64
+
+    header = '{"alg":"HS256","nested":' + '[' * 1500 + '0' + ']' * 1500 + '}'
+    encode = lambda value: base64.urlsafe_b64encode(value.encode()).decode().rstrip('=')
+    token = encode(header) + '.' + encode('{"sub":"1","exp":9999999999}') + '.' + encode('x' * 32)
+    response = client.get('/auth/me', headers={'Authorization': 'Bearer ' + token})
+    assert response.status_code == 401
+    assert response.json() == {'detail': 'Could not validate credentials'}
+    assert response.headers['www-authenticate'] == 'Bearer'

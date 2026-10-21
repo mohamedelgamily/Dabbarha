@@ -1,0 +1,40 @@
+# INACTIVE TEMPLATE for direct clients -> Caddy -> loopback Uvicorn.
+# Replace the example hostname, validate with the selected supported Caddy release,
+# and verify HTTPS before deployment. No CDN / additional proxy is assumed.
+{
+    servers {
+        max_header_size 16KiB
+        timeouts {
+            read_header 5s
+            read_body 10s
+            write 30s
+            idle 30s
+        }
+    }
+}
+
+api.example.com {
+    # HSTS belongs ONLY on the actual HTTPS site; no subdomain/preload commitment.
+    header {
+        Strict-Transport-Security "max-age=31536000"
+        X-Content-Type-Options nosniff
+        Cache-Control no-store
+        Referrer-Policy no-referrer
+        -Server
+    }
+    request_body {
+        max_size 65536
+    }
+    reverse_proxy 127.0.0.1:8000 {
+        # Overwrite client-supplied forwarding data at this trusted first proxy.
+        header_up X-Forwarded-For {http.request.remote.host}
+        header_up X-Forwarded-Proto {scheme}
+        header_up -Forwarded
+        header_up -X-Real-IP
+        transport http {
+            dial_timeout 2s
+            response_header_timeout 30s
+        }
+    }
+    # Access logging is deliberately not enabled. Do not enable log_credentials/debug/trace.
+}
