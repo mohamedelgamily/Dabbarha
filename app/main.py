@@ -11,6 +11,7 @@ from app.core.api_security_settings import APISecuritySettings
 from app.core.api_security import SecurityRuntime
 from app.core.rate_limit import StoreUnavailable
 from app.core.session_settings import SessionSettings
+from app.core.notification_settings import NotificationSettings
 from app.services.sessions import SessionService
 from app.core.request_security import RequestSecurityMiddleware
 
@@ -20,6 +21,7 @@ from app.api.routes.sessions import router as sessions_router
 from app.api.routes.dashboard import router as dashboard_router
 from app.api.routes.forecast import router as forecast_router
 from app.api.routes.obligations import router as obligations_router
+from app.api.routes.notifications import router as notifications_router
 
 
 @asynccontextmanager
@@ -45,6 +47,7 @@ app = FastAPI(
 
 app.state.security = SecurityRuntime(APISecuritySettings.from_environ(SETTINGS.app_env))
 app.state.sessions = SessionService(SessionSettings.from_environ())
+app.state.notification_settings = NotificationSettings.from_environ(SETTINGS.app_env)
 app.add_middleware(RequestSecurityMiddleware)
 
 
@@ -78,6 +81,7 @@ async def database_error_handler(request: Request, exc: SQLAlchemyError) -> JSON
 app.include_router(auth_router, prefix="/auth", tags=["auth"])
 app.include_router(sessions_router, prefix="/auth", tags=["auth"])
 app.include_router(obligations_router, prefix="/obligations", tags=["obligations"])
+app.include_router(notifications_router, prefix="/notifications", tags=["notifications"])
 app.include_router(forecast_router, prefix="/forecast", tags=["forecast"])
 app.include_router(dashboard_router, prefix="/dashboard", tags=["dashboard"])
 app.include_router(affordability_router, prefix="/affordability", tags=["affordability"])

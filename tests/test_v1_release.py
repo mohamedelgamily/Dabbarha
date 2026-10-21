@@ -69,10 +69,25 @@ def test_application_has_no_retired_imports_or_provider_requirements() -> None:
     requirements = (ROOT / 'requirements.txt').read_text().lower()
     assert 'google-genai' not in requirements
     assert 'groq' not in requirements
+    phase2d_tables = {
+        'notification_preferences', 'notification_devices', 'payment_occurrences',
+        'payment_occurrence_events', 'notifications', 'notification_deliveries',
+    }
     assert set(Base.metadata.tables) == {
         'users', 'obligations', 'obligation_installments', 'auth_sessions',
         'auth_refresh_tokens', 'legacy_access_revocations',
+    } | phase2d_tables
+    required_owners = {
+        'notification_preferences': {'users.id'},
+        'notification_devices': {'users.id', 'auth_sessions.id'},
+        'payment_occurrences': {'users.id', 'obligations.id', 'obligation_installments.id'},
+        'payment_occurrence_events': {'users.id', 'payment_occurrences.id'},
+        'notifications': {'users.id', 'obligations.id', 'payment_occurrences.id'},
+        'notification_deliveries': {'notifications.id', 'notification_devices.id'},
     }
+    for table_name, owner_targets in required_owners.items():
+        targets = {foreign_key.target_fullname for foreign_key in Base.metadata.tables[table_name].foreign_keys}
+        assert owner_targets <= targets, f'{table_name} is missing ownership/parent foreign keys'
 
 
 @pytest.fixture

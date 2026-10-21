@@ -97,6 +97,24 @@ unchanged. Other algorithms now fail configuration rather than silently changing
 the deployment's signing contract; an alternate algorithm requires a separate
 approved migration.
 
+## Phase 2d notification activation
+
+Notification settings default to disabled, so API startup does not start a worker
+or call Expo. Enable `NOTIFICATIONS_ENABLED=true` only after applying the additive
+Phase 2d migration and setting `SESSION_AUTH_ENABLED=true`; push tokens must be
+bound to revocable device sessions. `PUSH_TOKEN_ENCRYPTION_KEY` must be a separate
+random 32-byte key encoded as base64. Keep it in the deployment secret manager;
+the application never generates or prints it. `NOTIFICATION_DELIVERY_ENABLED`
+separately controls provider delivery. Real Expo delivery is production-only;
+development delivery requires an explicit mock provider. `EXPO_PUSH_ACCESS_TOKEN`
+is optional and should be configured as a secret only if the Expo project uses it.
+
+Start the database-backed worker as a separately supervised service with
+`python -m app.commands.notification_worker`. No API process starts it. See
+`payment-reminders.md` for settings, retry limits and worker operations, and
+`frontend-notifications-handoff.md` for the required Expo/device-session client
+work. Keep notifications disabled until that frontend rollout is ready.
+
 Phase 2b.2 deliberately removes `/chat`; old mobile versions must remove or hide
 the route and shortcuts before v1.0 release. There is no outage or mock fallback.
 See `frontend-v1-handoff.md` and `conversation-retirement.md` for compatibility and

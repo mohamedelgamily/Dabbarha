@@ -1,0 +1,24 @@
+[Unit]
+Description=Dabbarha durable payment notification worker
+After=network.target postgresql.service
+Wants=network.target
+
+[Service]
+Type=simple
+User=dabbarha
+Group=dabbarha
+WorkingDirectory=/opt/dabbarha/backend
+EnvironmentFile=/etc/dabbarha/backend.env
+ExecStart=/opt/dabbarha/venv/bin/python -m app.commands.notification_worker
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=15s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/dabbarha
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

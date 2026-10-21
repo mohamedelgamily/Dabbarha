@@ -1,12 +1,16 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from datetime import date, datetime, timedelta, timezone
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
 from sqlalchemy import select, update
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import get_current_user, get_db
+from app.core.forecast import add_months
 from app.core.installments import build_installment_schedule
 from app.models.obligation import Obligation, ObligationInstallment
+from app.models.notifications import Notification, PaymentOccurrence, PaymentOccurrenceEvent
 from app.models.user import User
 from app.schemas.obligation import (
     ObligationCreate,
@@ -17,6 +21,10 @@ from app.schemas.obligation import (
     InstallmentPlanUpdate,
     InstallmentScheduleResponse,
 )
+from app.schemas.notifications import PaymentOccurrenceList, PaymentOccurrenceResponse
+from app.core.notification_copy import COPY_VERSION, render_copy
+from app.services.notifications import cancel_occurrence_notifications, get_preferences, invalidate_obligation_schedule
+from app.services.payment_occurrences import expected_occurrences, materialize_occurrence
 
 router = APIRouter()
 
@@ -110,6 +118,145 @@ def create_installment_plan(
     return obligation
 
 
+@router.get("/{id}/payment-occurrences", response_model=PaymentOccurrenceList,
+            summary="List payment occurrences for one owned obligation")
+def list_payment_occurrences(
+    id: int,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    start_date: date | None = None,
+    months: int = 6,
+) -> PaymentOccurrenceList:
+    if not request.app.state.notification_settings.enabled:
+        raise HTTPException(503, "Payment tracking is temporarily unavailable.")
+    if not 1 <= months <= 12:
+        raise HTTPException(422, "Choose a range from 1 to 12 months.")
+    obligation = db.scalar(select(Obligation).options(selectinload(Obligation.installments)).where(
+        Obligation.id == id, Obligation.user_id == current_user.id,
+    ))
+    if obligation is None:
+        raise HTTPException(404, "Obligation not found")
+    start = start_date or date.today().replace(day=1)
+    end = add_months(date(start.year, start.month, 1), months) - timedelta(days=1)
+    for spec in expected_occurrences(obligation, start, end, include_latest_overdue=True):
+        materialize_occurrence(db, obligation, spec)
+    rows = list(db.scalars(select(PaymentOccurrence).where(
+        PaymentOccurrence.obligation_id == id,
+        PaymentOccurrence.user_id == current_user.id,
+        PaymentOccurrence.due_date <= end,
+        PaymentOccurrence.due_date >= start - timedelta(days=366),
+    ).order_by(PaymentOccurrence.due_date.desc(), PaymentOccurrence.id.desc())).all())
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return PaymentOccurrenceList(rows=rows)
+
+
+def _owned_occurrence(db: Session, obligation_id: int, occurrence_id: int, user_id: int):
+    row = db.scalar(select(PaymentOccurrence).where(
+        PaymentOccurrence.id == occurrence_id,
+        PaymentOccurrence.obligation_id == obligation_id,
+        PaymentOccurrence.user_id == user_id,
+    ).with_for_update())
+    if row is None:
+        raise HTTPException(404, "Payment occurrence not found")
+    return row
+
+
+@router.post("/{id}/payment-occurrences/{occurrence_id}/mark-paid",
+            response_model=PaymentOccurrenceResponse,
+            summary="Record the user's declaration that a payment was paid")
+def mark_occurrence_paid(
+    id: int,
+    occurrence_id: int,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> PaymentOccurrence:
+    if not request.app.state.notification_settings.enabled:
+        raise HTTPException(503, "Payment tracking is temporarily unavailable.")
+    obligation = db.scalar(select(Obligation).where(
+        Obligation.id == id, Obligation.user_id == current_user.id,
+    ).with_for_update())
+    if obligation is None:
+        raise HTTPException(404, "Obligation not found")
+    occurrence = _owned_occurrence(db, id, occurrence_id, current_user.id)
+    if occurrence.state == "superseded":
+        raise HTTPException(409, "This payment schedule changed. Reload the current schedule.")
+    if occurrence.state == "paid":
+        return occurrence
+    occurrence.state = "paid"
+    occurrence.paid_at = datetime.now(timezone.utc)
+    db.add(PaymentOccurrenceEvent(occurrence_id=occurrence.id, user_id=current_user.id, action="marked_paid"))
+    if occurrence.payment_kind == "down_payment":
+        obligation.down_payment_paid = True
+    cancel_occurrence_notifications(db, [occurrence.id])
+    pref = get_preferences(db, current_user.id, create=False)
+    if pref is not None and pref.reminders_enabled and "payment_completed" in pref.categories:
+        title, body = render_copy("payment_completed", pref.language, pref.privacy_mode,
+                                  item_name=obligation.item_name, amount=occurrence.scheduled_amount)
+        db.add(Notification(
+            user_id=current_user.id, obligation_id=id, occurrence_id=occurrence.id,
+            notification_type="payment_completed",
+            deduplication_key=f"payment-completed:{occurrence.id}:{occurrence.reminder_epoch}:{int(occurrence.paid_at.timestamp())}",
+            scheduled_at=occurrence.paid_at, title=title, body=body,
+            copy_version=COPY_VERSION, route="obligation_detail", delivery_state="queued",
+        ))
+    try:
+        db.commit()
+        db.refresh(occurrence)
+    except Exception:
+        db.rollback()
+        raise
+    return occurrence
+
+
+@router.post("/{id}/payment-occurrences/{occurrence_id}/undo-paid",
+            response_model=PaymentOccurrenceResponse,
+            summary="Undo an accidental user payment declaration")
+def undo_occurrence_paid(
+    id: int,
+    occurrence_id: int,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> PaymentOccurrence:
+    if not request.app.state.notification_settings.enabled:
+        raise HTTPException(503, "Payment tracking is temporarily unavailable.")
+    obligation = db.scalar(select(Obligation).where(
+        Obligation.id == id, Obligation.user_id == current_user.id,
+    ).with_for_update())
+    if obligation is None:
+        raise HTTPException(404, "Obligation not found")
+    occurrence = _owned_occurrence(db, id, occurrence_id, current_user.id)
+    if occurrence.state == "superseded":
+        raise HTTPException(409, "This payment schedule changed. Reload the current schedule.")
+    if occurrence.state == "unpaid":
+        return occurrence
+    occurrence.state = "unpaid"
+    occurrence.paid_at = None
+    occurrence.reminder_epoch += 1
+    db.add(PaymentOccurrenceEvent(occurrence_id=occurrence.id, user_id=current_user.id, action="undone"))
+    if occurrence.payment_kind == "down_payment":
+        obligation.down_payment_paid = False
+    cancel_occurrence_notifications(db, [occurrence.id])
+    db.execute(update(Notification).where(
+        Notification.occurrence_id == occurrence.id,
+        Notification.notification_type == "payment_completed",
+        Notification.delivery_state.in_(["queued", "sending"]),
+    ).values(delivery_state="cancelled"))
+    try:
+        db.commit()
+        db.refresh(occurrence)
+    except Exception:
+        db.rollback()
+        raise
+    return occurrence
+
+
 @router.post(
     "/{id}/convert-to-installment-plan",
     response_model=ObligationResponse,
@@ -177,6 +324,19 @@ def update_installment_plan(
         raise HTTPException(status_code=409, detail="Explicitly convert this legacy obligation before editing a plan.")
     if obligation.schedule_version != plan.schedule_version:
         raise HTTPException(status_code=409, detail="The plan changed. Reload it before saving your edits.")
+    if plan.down_payment_paid != obligation.down_payment_paid:
+        raise HTTPException(
+            status_code=409,
+            detail="Use the payment occurrence's Mark as paid or Undo paid action to change payment status.",
+        )
+    if obligation.down_payment_paid and (
+        plan.down_payment_amount != obligation.down_payment_amount
+        or plan.down_payment_date != obligation.down_payment_date
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Undo the recorded down payment before changing its amount or date.",
+        )
     updated_plan = plan.model_copy(update={"status": plan.status or obligation.status})
     rows = _plan_rows(updated_plan)
     next_version = plan.schedule_version + 1
@@ -193,6 +353,7 @@ def update_installment_plan(
         if changed != 1:
             db.rollback()
             raise HTTPException(status_code=409, detail="The plan changed. Reload it before saving your edits.")
+        invalidate_obligation_schedule(db, obligation)
         # Refresh after the compare-and-swap update, then replace rows in this transaction.
         db.refresh(obligation)
         obligation.installments = []
@@ -358,6 +519,12 @@ def update_obligation(
         setattr(obligation, field, value)
 
     try:
+        plan_fields = {"total_amount", "monthly_installment_amount", "start_date", "term_months", "due_day_of_month"}
+        terminal = obligation.status in {"completed", "defaulted"}
+        if plan_fields.intersection(update_data) or terminal:
+            invalidate_obligation_schedule(db, obligation, supersede=True)
+        elif update_data:
+            invalidate_obligation_schedule(db, obligation, supersede=False)
         db.commit()
         db.refresh(obligation)
     except Exception:
@@ -391,6 +558,7 @@ def delete_obligation(
         )
 
     try:
+        invalidate_obligation_schedule(db, obligation, remove=True)
         db.delete(obligation)
         db.commit()
     except Exception:

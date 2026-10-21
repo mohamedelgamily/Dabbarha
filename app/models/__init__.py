@@ -5,3 +5,9 @@ __all__ = ["Obligation", "User"]
 
 from app.models.auth_session import AuthSession, AuthRefreshToken, LegacyAccessRevocation
 __all__ += ["AuthSession", "AuthRefreshToken", "LegacyAccessRevocation"]
+from app.models.notifications import (
+    Notification, NotificationDelivery, NotificationPreference, PaymentOccurrence,
+    PaymentOccurrenceEvent, PushDevice,
+)
+__all__ += ["Notification", "NotificationDelivery", "NotificationPreference",
+            "PaymentOccurrence", "PaymentOccurrenceEvent", "PushDevice"]

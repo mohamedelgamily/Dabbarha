@@ -242,6 +242,40 @@ def test_api_plan_schedule_compatibility_update_and_ownership(plan_client):
     assert stored is not None and len(stored.installments) == 3 and stored.user_id == user_id
 
 
+def test_plan_update_cannot_bypass_down_payment_audit_trail(plan_client):
+    client, db, auth, _ = plan_client
+    payload = {
+        "provider": "provider", "item_name": "item", "category": "other",
+        "purchase_price": "100.00", "payment_method": "automatic", "interest_method": "none",
+        "down_payment_amount": "10.00", "down_payment_date": "2026-01-03",
+        "down_payment_paid": False, "start_date": "2026-01-15", "term_months": 2,
+        "due_day_of_month": 15,
+    }
+    created = client.post("/obligations/installment-plans", json=payload, headers={"Authorization": auth})
+    assert created.status_code == 201, created.text
+    obligation_id = created.json()["id"]
+
+    attempted_mark = client.put(
+        f"/obligations/{obligation_id}/installment-plan",
+        json=payload | {"schedule_version": 1, "down_payment_paid": True},
+        headers={"Authorization": auth},
+    )
+    assert attempted_mark.status_code == 409
+    assert "Mark as paid" in attempted_mark.json()["detail"]
+
+    obligation = db.get(Obligation, obligation_id)
+    obligation.down_payment_paid = True
+    db.commit()
+    attempted_rewrite = client.put(
+        f"/obligations/{obligation_id}/installment-plan",
+        json=payload | {"schedule_version": 1, "down_payment_paid": True,
+                        "down_payment_amount": "12.00", "down_payment_date": "2026-01-04"},
+        headers={"Authorization": auth},
+    )
+    assert attempted_rewrite.status_code == 409
+    assert "Undo" in attempted_rewrite.json()["detail"]
+
+
 def test_plan_api_rejects_full_down_payment_with_422(plan_client):
     client, _db, auth, _user_id = plan_client
     response = client.post(

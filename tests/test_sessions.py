@@ -454,6 +454,8 @@ def test_additive_migration_and_downgrade_only_disposable_db(session_db):
     with patch.object(config,"DATABASE_URL",url):
         command.upgrade(cfg,"head")
         assert {"auth_sessions","auth_refresh_tokens","legacy_access_revocations"} <= set(inspect(session_db).get_table_names())
+        assert {"notification_preferences", "notification_devices", "payment_occurrences",
+                "payment_occurrence_events", "notifications", "notification_deliveries"} <= set(inspect(session_db).get_table_names())
         assert "obligation_installments" in inspect(session_db).get_table_names()
         assert {
             "purchase_price", "payment_method", "interest_method", "nominal_annual_interest_rate",
@@ -464,6 +466,9 @@ def test_additive_migration_and_downgrade_only_disposable_db(session_db):
             db.add(user);db.commit()
         command.downgrade(cfg,"17d4d0e39961")
         assert "auth_sessions" not in inspect(session_db).get_table_names()
+        assert not ({"notification_preferences", "notification_devices", "payment_occurrences",
+                     "payment_occurrence_events", "notifications", "notification_deliveries"}
+                    & set(inspect(session_db).get_table_names()))
         assert "obligation_installments" not in inspect(session_db).get_table_names()
         assert "purchase_price" not in {column["name"] for column in inspect(session_db).get_columns("obligations")}
         with Session(session_db) as db:assert db.scalar(select(User.password_hash))=="existing-hash"
