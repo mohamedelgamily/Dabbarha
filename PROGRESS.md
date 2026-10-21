@@ -4,9 +4,9 @@
 
 Project: Dabbarha / دبّرها
 
-Current phase: Phase 2b.3 — Dependency Security Updates
+Current phase: Phase 2e — Account Deletion & Privacy
 
-Status: isolated dependency updates verified; Linux execution/deployment and frontend cleanup pending
+Status: implementation and disposable local SQLite/PostgreSQL/Redis verification complete; production deployment and external deletion-request operations remain unverified
 
 The current v1.0 backend has no AI/chat endpoint, provider, tools, memory or RAG. Earlier AI implementation and Phase 2b.1 entries below are historical records; Phase 2b.2 supersedes their feature-specific behavior. JWT/environment security hardening remains active.
 
@@ -769,7 +769,7 @@ Target confirmed by the owner: Ubuntu Server 24.04 LTS x86_64, current security-
 - No application/migration/financial source, frontend, real environment secret or persistent data changed. No dependency installation/scan invoked chatbot services. `git diff --check` and status review passed; no staging, commit, push, merge, rebase, reset, stash or branch change occurred.
 - Dependency checks do not establish production readiness. Remaining non-dependency hardening, Linux execution, current Python patching at deployment, PostgreSQL integration and Jomana's frontend removal remain separate work.
 
-## What Was Intentionally NOT Built Yet
+## Historical Phase 1 Scope Note (superseded by later phases)
 
 - Refresh tokens
 - Full logout / token invalidation
@@ -777,9 +777,9 @@ Target confirmed by the owner: Ubuntu Server 24.04 LTS x86_64, current security-
 - Extra API endpoints beyond completed auth, obligation CRUD, forecast, dashboard and affordability
 - Additional infrastructure or abstractions
 
-## Next Planned Step
+## Outstanding Launch Requirements
 
-Coordinate Jomana's v1.0 frontend cleanup using `docs/frontend-v1-handoff.md`; continue separately approved non-AI backend security hardening. Do not resume the old chatbot-repair phase for v1.0.
+Before launch, configure and verify an externally reachable account-deletion request channel, apply and verify the encrypted-backup maximum retention of 30 days, rehearse safe PostgreSQL backup restoration with deletion WAL replay/quarantine, deploy and verify the required migrations, and complete legal/store and frontend reviews. These are deployment and product-operations requirements; Phase 2e does not claim they are active.
 
 ## Historical Design Decisions (superseded where Phase 2b.2 applies)
 
@@ -980,3 +980,14 @@ Use this section to record progress in later phases.
 - Added API/configuration documentation, the mobile handoff for Jomana, a systemd deployment template, blank-key environment examples, and the external verification runner. No frontend source, production credentials, financial formulas, or persistent user data were modified.
 - Independently reviewed the saved external run at `/var/folders/qr/4cyr66v509jcksbt3gxr_10w0000gn/T/dabbarha-phase-2d-verification-20261021-234137.log`: all 44 exact dependency pins matched; `pip check` passed; `pip-audit 2.10.1` reported no known vulnerabilities; disposable SQLite/PostgreSQL migration and concurrent-worker tests ran **4 passed**; the complete suite ran **628 passed, 0 failed, 0 skipped, 1 existing Starlette/httpx deprecation warning** in 66.03 seconds. Redis and PostgreSQL integration tests were mandatory and passed. The runner exited 0 and `git diff --check` passed.
 - Verification establishes behavior on macOS with disposable local SQLite, PostgreSQL 18.6 and Redis 7.4.11 only. It does not verify production deployment, production database migration, Expo/APNs/FCM delivery, or real iOS/Android devices. The frontend handoff and production rollout remain separate work; this is not a production-readiness claim.
+
+## Phase 2e — Account Deletion & Privacy (verified with disposable local integrations; deployment and store requirements pending)
+
+- Added authenticated `DELETE /auth/account`. The caller must present the existing access token, re-enter the current password (verified with the existing Argon2id hash), and explicitly confirm permanent deletion. It deletes the authenticated account only, returns 204 after the transaction commits, and fails safely on password, storage, or lock errors. Existing authentication and financial response contracts remain unchanged.
+- Added an additive migration, `2e1a00000001_account_deletion_identity.py`, for a single PII-free SQLite account-ID high-water mark. This prevents SQLite from reusing a deleted maximum user ID while a legacy access JWT could still be valid; it stores no deleted-user list. PostgreSQL continues using its native identity sequence. Upgrade, downgrade, and re-upgrade were exercised only on disposable databases.
+- Account deletion cascades the user profile and financial profile, obligations and installment schedules, payment occurrences and audit events, notification preferences/history/deliveries, encrypted push-device tokens, sessions/refresh-token rows and legacy revocations, plus legacy conversation/message data. Tests verify that legacy and session access tokens and refresh credentials fail after deletion, rollback leaves all related data intact, and cross-user records remain isolated.
+- Coordinated the notification sender and deletion endpoint with the same bounded per-user database lock. The worker rechecks eligibility and device/session state while holding that lock through the provider request (whose production HTTP timeout is five seconds); lock waits are bounded. A provider-accepted notification may still arrive after deletion completes, but no new send begins after the deletion response.
+- Added the public bilingual informational route `/privacy/account-deletion`, English/Egyptian Arabic deletion disclosures, `docs/account-deletion.md`, and `docs/frontend-account-deletion-handoff.md`. The public page currently explains the process but does not receive or process external deletion requests; the publisher must configure a real support/request channel before publishing it as the store's external deletion path. No support address or service is claimed to exist.
+- Independently inspected external verification log `/var/folders/qr/4cyr66v509jcksbt3gxr_10w0000gn/T/dabbarha-phase-2e-verification-20261022-001359.log`. It records **18 focused SQLite/PostgreSQL migration, cascade, rollback, token, and worker-race cases passed** (one existing warning), then **648 passed, 0 failed, 0 skipped** in the complete suite (one existing Starlette/httpx deprecation warning; 73.25 seconds). Redis and PostgreSQL integrations were mandatory. All 44 exact dependency pins matched; `pip check` passed; `pip-audit 2.10.1` reported no known vulnerabilities; the runner exited 0 and final Git/diff checks passed.
+- Additional review found no frontend changes, persistent database files, production secrets, or credential-shaped tokens among the changed files. No production migration or deployment operation was performed. `git diff --check` and shell syntax checks passed.
+- Deployment requirements remain unverified: an external deletion-request channel must be made operational; encrypted backups must be configured to expire within the approved 30-day maximum; and restoration must use an isolated restore with complete post-backup WAL/deletion replay and orphan checks rather than activating an old snapshot directly. A snapshot-only restore can resurrect a deleted account; this phase adds no deletion ledger. The public information page alone does not establish Google Play compliance. No production-readiness, production-deployment, backup-control, or store-compliance claim is made.
