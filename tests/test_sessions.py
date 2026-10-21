@@ -454,11 +454,18 @@ def test_additive_migration_and_downgrade_only_disposable_db(session_db):
     with patch.object(config,"DATABASE_URL",url):
         command.upgrade(cfg,"head")
         assert {"auth_sessions","auth_refresh_tokens","legacy_access_revocations"} <= set(inspect(session_db).get_table_names())
+        assert "obligation_installments" in inspect(session_db).get_table_names()
+        assert {
+            "purchase_price", "payment_method", "interest_method", "nominal_annual_interest_rate",
+            "down_payment_amount", "down_payment_date", "down_payment_paid", "schedule_version",
+        } <= {column["name"] for column in inspect(session_db).get_columns("obligations")}
         with Session(session_db) as db:
             user=User(name="Preserved",email="preserved@example.com",password_hash="existing-hash")
             db.add(user);db.commit()
         command.downgrade(cfg,"17d4d0e39961")
         assert "auth_sessions" not in inspect(session_db).get_table_names()
+        assert "obligation_installments" not in inspect(session_db).get_table_names()
+        assert "purchase_price" not in {column["name"] for column in inspect(session_db).get_columns("obligations")}
         with Session(session_db) as db:assert db.scalar(select(User.password_hash))=="existing-hash"
         command.upgrade(cfg,"head")
 

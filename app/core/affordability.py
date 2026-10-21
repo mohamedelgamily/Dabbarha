@@ -19,6 +19,10 @@ class ProposedCommitment:
     amount: Decimal
     start_date: date
     term_months: int
+    schedule: tuple[object, ...] = ()
+    down_payment_amount: Decimal = Decimal("0.00")
+    down_payment_date: date | None = None
+    down_payment_paid: bool = False
 
     def __post_init__(self) -> None:
         if self.amount < Decimal("0.00"):
@@ -34,6 +38,8 @@ class MonthlyAffordabilityResult:
     fixed_expenses: Decimal
     existing_obligation_payments: Decimal
     proposed_commitment_amount: Decimal
+    proposed_installment_amount: Decimal
+    proposed_down_payment_amount: Decimal
     projected_buffer: Decimal
 
 
@@ -85,7 +91,9 @@ def evaluate_affordability(
 
     monthly_results: list[MonthlyAffordabilityResult] = []
     for month_forecast in base_forecast:
-        proposed_amount = _commitment_amount_in_month(proposed_commitment, month_forecast.month)
+        proposed_installment = _commitment_installment_in_month(proposed_commitment, month_forecast.month)
+        proposed_down_payment = _commitment_down_payment_in_month(proposed_commitment, month_forecast.month)
+        proposed_amount = proposed_installment + proposed_down_payment
         projected_buffer = (
             month_forecast.income
             - month_forecast.fixed_expenses
@@ -100,6 +108,8 @@ def evaluate_affordability(
                 fixed_expenses=month_forecast.fixed_expenses,
                 existing_obligation_payments=month_forecast.obligation_payments,
                 proposed_commitment_amount=proposed_amount,
+                proposed_installment_amount=proposed_installment,
+                proposed_down_payment_amount=proposed_down_payment,
                 projected_buffer=projected_buffer,
             )
         )
@@ -150,7 +160,24 @@ def evaluate_affordability(
 
 
 def _commitment_amount_in_month(commitment: ProposedCommitment, month: date) -> Decimal:
+    return _commitment_installment_in_month(commitment, month)
+
+
+def _commitment_installment_in_month(commitment: ProposedCommitment, month: date) -> Decimal:
+    if commitment.schedule:
+        return sum(
+            (row.amount for row in commitment.schedule if month_start(row.due_date) == month_start(month)),
+            Decimal("0.00"),
+        )
     months_since_start = month_index(month_start(month)) - month_index(month_start(commitment.start_date))
     if 0 <= months_since_start < commitment.term_months:
         return commitment.amount
+    return Decimal("0.00")
+
+
+def _commitment_down_payment_in_month(commitment: ProposedCommitment, month: date) -> Decimal:
+    if commitment.down_payment_paid or commitment.down_payment_date is None:
+        return Decimal("0.00")
+    if month_start(commitment.down_payment_date) == month_start(month):
+        return commitment.down_payment_amount
     return Decimal("0.00")

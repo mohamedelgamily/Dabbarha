@@ -2,7 +2,7 @@ from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import get_current_user, get_db
 from app.core.forecast import build_forecast
@@ -40,7 +40,7 @@ def get_forecast(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
 
-    stmt = select(Obligation).where(Obligation.user_id == current_user.id)
+    stmt = select(Obligation).options(selectinload(Obligation.installments)).where(Obligation.user_id == current_user.id)
     obligations = list(db.scalars(stmt).all())
 
     rows = build_forecast(
