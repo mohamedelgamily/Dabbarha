@@ -12,6 +12,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.db.account_lock import lock_account_row
 from app.core.notification_time import safe_now
 from app.models.auth_session import AuthSession
 from app.models.notifications import (
@@ -211,33 +212,55 @@ def _refresh_notification_state(db: Session, notification_id: int) -> None:
 
 def _send_one(engine, delivery_id: int, settings, provider, now: datetime) -> None:
     factory = _sessions(engine)
-    with factory() as db:
+    # Keep the per-user row lock from the last eligibility check until the
+    # bounded provider request and its result are committed. Account deletion
+    # takes this same lock, so no send can start after deletion commits. The
+    # production Expo client has a five-second HTTP timeout.
+    with factory.begin() as db:
         delivery = db.get(NotificationDelivery, delivery_id)
         if delivery is None or delivery.delivery_state != "sending":
             return
-        device = db.get(PushDevice, delivery.device_id)
         notification = db.get(Notification, delivery.notification_id)
-        if device is None or notification is None:
+        if notification is None:
+            return
+        if not lock_account_row(db, notification.user_id):
+            return
+        # The conditional lock update may have waited behind a worker/deletion
+        # transaction. Refresh rows before the final send decision.
+        db.expire(delivery)
+        delivery = db.get(NotificationDelivery, delivery_id)
+        notification = db.get(Notification, delivery.notification_id) if delivery else None
+        if (delivery is None or delivery.delivery_state != "sending"
+                or notification is None or not _current_notification(db, notification, now)):
+            if delivery is not None and delivery.delivery_state == "sending":
+                delivery.delivery_state = "cancelled"
+                delivery.error_code = "notification_no_longer_eligible"
+                delivery.lease_until = None
+                if notification is not None:
+                    _cancel_notification(db, notification, "notification_no_longer_eligible")
+            return
+        device = db.get(PushDevice, delivery.device_id)
+        session = db.get(AuthSession, device.session_id) if device is not None else None
+        if (device is None or not device.active or session is None or session.revoked_at is not None
+                or session.idle_expires_at <= int(now.timestamp())
+                or session.absolute_expires_at <= int(now.timestamp())):
+            delivery.delivery_state = "cancelled"
+            delivery.error_code = "device_session_inactive"
+            delivery.lease_until = None
+            _refresh_notification_state(db, notification.id)
             return
         try:
             token = decrypt_push_token(settings, device)
         except Exception:
-            with factory.begin() as tx:
-                current = tx.get(NotificationDelivery, delivery_id)
-                if current is not None and current.delivery_state == "sending":
-                    current.delivery_state = "failed"
-                    current.error_code = "device_token_unavailable"
-                    current.lease_until = None
-                    _refresh_notification_state(tx, current.notification_id)
+            delivery.delivery_state = "failed"
+            delivery.error_code = "device_token_unavailable"
+            delivery.lease_until = None
+            _refresh_notification_state(db, notification.id)
             return
-        title, body, route, obligation_id = notification.title, notification.body, notification.route, notification.obligation_id
-    result = provider.send(token, title, body, {"notification_id": notification.id,
-                                                "route": route, "obligation_id": obligation_id})
-    with factory.begin() as db:
-        delivery = db.scalar(select(NotificationDelivery).where(
-            NotificationDelivery.id == delivery_id).with_for_update())
-        if delivery is None or delivery.delivery_state != "sending":
-            return
+        result = provider.send(token, notification.title, notification.body,
+                               {"notification_id": notification.id,
+                                "route": notification.route,
+                                "obligation_id": notification.obligation_id})
         delivery.lease_until = None
         if result.accepted:
             delivery.delivery_state = "accepted"
@@ -255,9 +278,7 @@ def _send_one(engine, delivery_id: int, settings, provider, now: datetime) -> No
             delivery.next_attempt_at = None
             delivery.error_code = result.error_code or "provider_rejected"
             if result.error_code == "DeviceNotRegistered":
-                device = db.get(PushDevice, delivery.device_id)
-                if device is not None:
-                    device.active = False
+                device.active = False
         _refresh_notification_state(db, delivery.notification_id)
 
 

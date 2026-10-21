@@ -29,7 +29,7 @@ class SecurityRuntime:
 
     def auth_ip(self, path: str, ip: str):
         s = self.settings
-        if path == "/auth/login" or path == "/auth/sessions" or path.endswith("/revoke"):
+        if path == "/auth/login" or path == "/auth/sessions" or path == "/auth/account" or path.endswith("/revoke"):
             group, limit, window = "login_ip", s.login_ip_limit, s.login_window
         elif path == "/auth/register":
             group, limit, window = "registration", s.registration_limit, s.registration_window

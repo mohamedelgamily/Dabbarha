@@ -2,11 +2,14 @@
 import base64
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
+from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
 import json
 import os
 from pathlib import Path
 import subprocess
 import tempfile
+from threading import Event
 from uuid import uuid4
 import secrets
 import time
@@ -15,18 +18,27 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 import jwt
 import pytest
-from sqlalchemy import select
+from sqlalchemy import event as sqlalchemy_event, select, text
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
 from app.core.security import create_access_token, hash_password, verify_password
+from app.core.notification_settings import NotificationSettings
 from app.core.session_settings import SessionSettings
 from app.core.settings import ConfigurationError
 from app.db.database import Base, create_app_engine
 from app.main import app
 from app.models.auth_session import AuthRefreshToken, AuthSession, LegacyAccessRevocation
+from app.models.notifications import (
+    Notification, NotificationDelivery, NotificationPreference, PaymentOccurrence,
+    PaymentOccurrenceEvent, PushDevice,
+)
+from app.models.obligation import Obligation, ObligationInstallment
 from app.models.user import User
+from app.services.notification_worker import _send_one, run_once
+from app.services.notifications import encrypt_push_token
 from app.services.sessions import SessionService, digest
+from app.services.push_provider import SendResult
 
 
 @pytest.fixture(scope="session")
@@ -452,7 +464,7 @@ def test_additive_migration_and_downgrade_only_disposable_db(session_db):
     cfg=Config("alembic.ini")
     url=session_db.url.render_as_string(hide_password=False)
     with patch.object(config,"DATABASE_URL",url):
-        command.upgrade(cfg,"head")
+        command.upgrade(cfg,"2d1a00000001")
         assert {"auth_sessions","auth_refresh_tokens","legacy_access_revocations"} <= set(inspect(session_db).get_table_names())
         assert {"notification_preferences", "notification_devices", "payment_occurrences",
                 "payment_occurrence_events", "notifications", "notification_deliveries"} <= set(inspect(session_db).get_table_names())
@@ -462,6 +474,15 @@ def test_additive_migration_and_downgrade_only_disposable_db(session_db):
             "down_payment_amount", "down_payment_date", "down_payment_paid", "schedule_version",
         } <= {column["name"] for column in inspect(session_db).get_columns("obligations")}
         with Session(session_db) as db:
+            preexisting = User(name="Before deletion migration", email="pre-migration@example.com",
+                               password_hash="existing-hash")
+            db.add(preexisting); db.commit(); preexisting_id = preexisting.id
+        command.upgrade(cfg,"head")
+        assert "account_id_sequence" in inspect(session_db).get_table_names()
+        from app.models.account_id_sequence import AccountIdSequence
+        with Session(session_db) as db:
+            assert db.get(AccountIdSequence, 1).last_id == preexisting_id
+        with Session(session_db) as db:
             user=User(name="Preserved",email="preserved@example.com",password_hash="existing-hash")
             db.add(user);db.commit()
         command.downgrade(cfg,"17d4d0e39961")
@@ -469,6 +490,7 @@ def test_additive_migration_and_downgrade_only_disposable_db(session_db):
         assert not ({"notification_preferences", "notification_devices", "payment_occurrences",
                      "payment_occurrence_events", "notifications", "notification_deliveries"}
                     & set(inspect(session_db).get_table_names()))
+        assert "account_id_sequence" not in inspect(session_db).get_table_names()
         assert "obligation_installments" not in inspect(session_db).get_table_names()
         assert "purchase_price" not in {column["name"] for column in inspect(session_db).get_columns("obligations")}
         with Session(session_db) as db:assert db.scalar(select(User.password_hash))=="existing-hash"
@@ -585,3 +607,319 @@ def test_financial_contracts_and_ownership_with_session_jwts(session_api):
     # Logout is per family: independent historical legacy credentials are unaffected.
     assert client.get("/auth/me",headers=legacy).status_code==200
     assert client.delete(f"/obligations/{oid}",headers=legacy).status_code==204
+
+
+def _deletion_auth(client, access_token, password="password"):
+    return client.request("DELETE", "/auth/account", headers={"Authorization": f"Bearer {access_token}"},
+                          json={"password": password, "confirm_permanent_deletion": True})
+
+
+def _create_legacy_conversation_tables(engine):
+    with engine.begin() as connection:
+        connection.execute(text(
+            "CREATE TABLE conversations (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL "
+            "REFERENCES users(id) ON DELETE CASCADE)"
+        ))
+        connection.execute(text(
+            "CREATE TABLE conversation_messages (id INTEGER PRIMARY KEY, conversation_id INTEGER NOT NULL "
+            "REFERENCES conversations(id) ON DELETE CASCADE, content TEXT NOT NULL)"
+        ))
+
+
+def _seed_account_private_data(engine, service, user_id):
+    now = datetime.now(timezone.utc)
+    pair = service.create(engine, user_id, "delete-test-device")
+    token_settings = NotificationSettings(enabled=True, token_key=secrets.token_bytes(32))
+    with Session(engine) as db:
+        user = db.get(User, user_id)
+        user.monthly_income = Decimal("1234.56")
+        user.fixed_expenses = Decimal("321.00")
+        obligation = Obligation(
+            user_id=user_id, provider="Private provider", item_name="Private plan", category="other",
+            total_amount=Decimal("100.00"), monthly_installment_amount=Decimal("10.00"),
+            start_date=date.today(), term_months=10, due_day_of_month=5,
+            status="active", source="manual_entry",
+        )
+        db.add(obligation)
+        db.flush()
+        installment = ObligationInstallment(
+            obligation_id=obligation.id, installment_number=1, due_date=date.today(),
+            scheduled_amount=Decimal("10.00"), principal_amount=Decimal("10.00"),
+            interest_amount=Decimal("0.00"),
+        )
+        db.add(installment)
+        db.flush()
+        occurrence = PaymentOccurrence(
+            user_id=user_id, obligation_id=obligation.id, installment_id=installment.id,
+            occurrence_key="regular:deletion-test", payment_kind="regular", due_date=date.today(),
+            scheduled_amount=Decimal("10.00"), schedule_version=0, state="paid", paid_at=now,
+        )
+        db.add(occurrence)
+        db.flush()
+        db.add_all([
+            PaymentOccurrenceEvent(occurrence_id=occurrence.id, user_id=user_id, action="marked_paid"),
+            LegacyAccessRevocation(fingerprint="d" * 64, user_id=user_id, revoked_at=int(now.timestamp()),
+                                   expires_at=int(now.timestamp()) + 3600),
+            NotificationPreference(user_id=user_id, reminders_enabled=True, categories=["payment_completed"]),
+        ])
+        auth_session = db.scalar(select(AuthSession).where(AuthSession.id == pair["session_id"]))
+        push = "ExpoPushToken[DeletionTestToken12345678901234567890]"
+        token_hash, token_ciphertext, token_nonce = encrypt_push_token(
+            token_settings, push, user_id, auth_session.id)
+        device = PushDevice(
+            user_id=user_id, session_id=auth_session.id, token_hash=token_hash,
+            token_ciphertext=token_ciphertext, token_nonce=token_nonce, token_key_id="v1",
+            platform="ios", active=True,
+        )
+        db.add(device)
+        db.flush()
+        notification = Notification(
+            user_id=user_id, obligation_id=obligation.id, occurrence_id=occurrence.id,
+            notification_type="payment_completed", deduplication_key=f"delete-test:{user_id}",
+            scheduled_at=now, title="Private notification", body="Private body",
+            copy_version="v1", route="obligation_detail", delivery_state="queued",
+        )
+        db.add(notification)
+        db.flush()
+        db.add(NotificationDelivery(notification_id=notification.id, device_id=device.id,
+                                    delivery_state="queued", attempt_count=0, receipt_attempt_count=0))
+        db.commit()
+    _create_legacy_conversation_tables(engine)
+    with engine.begin() as connection:
+        connection.execute(text("INSERT INTO conversations (id, user_id) VALUES (1, :uid)"), {"uid": user_id})
+        connection.execute(text("INSERT INTO conversation_messages (id, conversation_id, content) VALUES (1, 1, 'private old chat')"))
+    return pair, token_settings
+
+
+def test_account_deletion_cascades_all_private_rows_and_invalidates_old_tokens(session_api):
+    client, service, engine, user_id = session_api
+    pair, _ = _seed_account_private_data(engine, service, user_id)
+    legacy_token = create_access_token(str(user_id))
+    headers = bearer(pair)
+    assert client.get("/auth/me", headers=headers).status_code == 200
+    assert client.get("/auth/me", headers={"Authorization": f"Bearer {legacy_token}"}).status_code == 200
+
+    response = _deletion_auth(client, pair["access_token"])
+    assert response.status_code == 204, response.text
+    assert client.get("/auth/me", headers=headers).status_code == 401
+    assert client.get("/auth/me", headers={"Authorization": f"Bearer {legacy_token}"}).status_code == 401
+    assert client.post("/auth/refresh", json={"refresh_token": pair["refresh_token"],
+                                               "retry_key": secrets.token_urlsafe(32)}).status_code == 401
+
+    expected_empty = [
+        User, Obligation, ObligationInstallment, AuthSession, AuthRefreshToken,
+        LegacyAccessRevocation, NotificationPreference, PushDevice, PaymentOccurrence,
+        PaymentOccurrenceEvent, Notification, NotificationDelivery,
+    ]
+    with Session(engine) as db:
+        for model in expected_empty:
+            assert db.scalar(select(model).limit(1)) is None, model.__tablename__
+    with engine.connect() as connection:
+        assert connection.scalar(text("SELECT COUNT(*) FROM conversations")) == 0
+        assert connection.scalar(text("SELECT COUNT(*) FROM conversation_messages")) == 0
+        # Only a global, non-user-linked allocator remains.
+        assert connection.scalar(text("SELECT COUNT(*) FROM account_id_sequence")) in {0, 1}
+
+    # Repeating with a stale credential is harmless and cannot recreate data.
+    assert _deletion_auth(client, pair["access_token"]).status_code == 401
+    with Session(engine) as db:
+        assert db.scalar(select(User.id).where(User.id == user_id)) is None
+
+
+def test_account_deletion_requires_correct_password_and_explicit_confirmation(session_api):
+    client, service, engine, user_id = session_api
+    pair = service.create(engine, user_id, "confirm-test")
+    bad_password = _deletion_auth(client, pair["access_token"], "wrong-password")
+    assert bad_password.status_code == 401
+    no_confirmation = client.request("DELETE", "/auth/account", headers=bearer(pair),
+                                     json={"password": "password", "confirm_permanent_deletion": False})
+    assert no_confirmation.status_code == 422
+    with Session(engine) as db:
+        assert db.get(User, user_id) is not None
+
+
+def test_account_id_is_not_reused_after_deletion(session_api):
+    client, service, engine, user_id = session_api
+    pair = service.create(engine, user_id, "id-reuse-test")
+    response = _deletion_auth(client, pair["access_token"])
+    assert response.status_code == 204
+    registered = client.post("/auth/register", json={
+        "name": "Replacement", "email": "replacement-account@example.com", "password": "password-123",
+    })
+    assert registered.status_code == 201, registered.text
+    assert registered.json()["id"] != user_id
+    assert client.get("/auth/me", headers={"Authorization": f"Bearer {pair['access_token']}"}).status_code == 401
+
+
+def test_concurrent_sqlite_registrations_allocate_distinct_account_ids(session_api):
+    client, _service, engine, _user_id = session_api
+    bodies = [{"name": f"Concurrent {index}", "email": f"concurrent-{index}@example.com",
+               "password": "password-123"} for index in range(5)]
+    with ThreadPoolExecutor(max_workers=len(bodies)) as pool:
+        responses = list(pool.map(lambda body: client.post("/auth/register", json=body), bodies))
+    assert [response.status_code for response in responses] == [201] * len(bodies)
+    ids = [response.json()["id"] for response in responses]
+    assert len(ids) == len(set(ids))
+    with Session(engine) as db:
+        assert len(db.scalars(select(User.id).where(User.id.in_(ids))).all()) == len(bodies)
+
+
+def test_public_account_deletion_information_is_bilingual_and_requires_no_login(session_api):
+    client, *_ = session_api
+    response = client.get("/privacy/account-deletion")
+    assert response.status_code == 200
+    assert "text/html" in response.headers["content-type"]
+    assert "Delete your Dabbarha account" in response.text
+    assert "حذف حساب دبّرها" in response.text
+    assert "This information page does not itself receive or process requests" in response.text
+
+
+def test_account_deletion_isolated_to_authenticated_user(session_api):
+    client, service, engine, user_id = session_api
+    pair = service.create(engine, user_id, "owner")
+    with Session(engine) as db:
+        other = User(name="Other account", email="other-deletion@example.com",
+                     password_hash=hash_password("other-password"))
+        db.add(other)
+        db.commit()
+        other_id = other.id
+    other_pair = service.create(engine, other_id, "other")
+    response = _deletion_auth(client, pair["access_token"])
+    assert response.status_code == 204
+    assert client.get("/auth/me", headers=bearer(other_pair)).status_code == 200
+    with Session(engine) as db:
+        assert db.get(User, user_id) is None
+        assert db.get(User, other_id) is not None
+
+
+def test_account_deletion_database_failure_rolls_back_everything(session_api):
+    client, service, engine, user_id = session_api
+    pair, _ = _seed_account_private_data(engine, service, user_id)
+
+    def fail_user_delete(_conn, _cursor, statement, _parameters, _context, _executemany):
+        if "DELETE FROM USERS" in statement.upper():
+            raise RuntimeError("injected disposable-test failure")
+
+    sqlalchemy_event.listen(engine, "before_cursor_execute", fail_user_delete)
+    try:
+        response = _deletion_auth(client, pair["access_token"])
+    finally:
+        sqlalchemy_event.remove(engine, "before_cursor_execute", fail_user_delete)
+    assert response.status_code == 503
+    with Session(engine) as db:
+        assert db.get(User, user_id) is not None
+        assert db.scalar(select(Obligation).where(Obligation.user_id == user_id)) is not None
+        assert db.scalar(select(AuthSession).where(AuthSession.user_id == user_id)) is not None
+        assert db.scalar(select(PushDevice).where(PushDevice.user_id == user_id)) is not None
+        assert db.scalar(select(PaymentOccurrence).where(PaymentOccurrence.user_id == user_id)) is not None
+        assert db.scalar(select(Notification).where(Notification.user_id == user_id)) is not None
+    with engine.connect() as connection:
+        assert connection.scalar(text("SELECT COUNT(*) FROM conversations WHERE user_id = :uid"), {"uid": user_id}) == 1
+        assert connection.scalar(text("SELECT COUNT(*) FROM conversation_messages")) == 1
+
+
+def test_concurrent_account_deletion_is_atomic_and_idempotent(session_api):
+    client, service, engine, user_id = session_api
+    pair = service.create(engine, user_id, "concurrent-delete")
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        responses = list(pool.map(lambda _: _deletion_auth(client, pair["access_token"]), range(2)))
+    codes = sorted(response.status_code for response in responses)
+    assert codes[0] == 204
+    assert codes[1] in {401, 503}
+    with Session(engine) as db:
+        assert db.get(User, user_id) is None
+        assert db.scalar(select(AuthSession).where(AuthSession.user_id == user_id)) is None
+
+
+def test_refresh_racing_account_deletion_cannot_leave_valid_session(session_api):
+    client, service, engine, user_id = session_api
+    pair = service.create(engine, user_id, "refresh-delete-race")
+    entered, release = Event(), Event()
+
+    def delayed_refresh():
+        def hold(_session_id):
+            entered.set()
+            assert release.wait(timeout=5)
+        try:
+            return service.refresh(engine, pair["refresh_token"], secrets.token_urlsafe(32), hold)
+        except HTTPException as exc:
+            return exc.status_code
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        refresh_future = pool.submit(delayed_refresh)
+        assert entered.wait(timeout=3)
+        delete_future = pool.submit(_deletion_auth, client, pair["access_token"])
+        time.sleep(0.1)
+        release.set()
+        deletion_response = delete_future.result(timeout=10)
+        refresh_result = refresh_future.result(timeout=10)
+    assert deletion_response.status_code == 204
+    if isinstance(refresh_result, dict):
+        assert client.get("/auth/me", headers=bearer(refresh_result)).status_code == 401
+    else:
+        assert refresh_result == 401
+
+
+def test_notification_worker_send_and_deletion_share_bounded_account_lock(session_api):
+    client, service, engine, user_id = session_api
+    pair = service.create(engine, user_id, "worker-delete-race")
+    settings = NotificationSettings(enabled=True, delivery_enabled=True, token_key=secrets.token_bytes(32))
+    now = datetime.now(timezone.utc)
+    with Session(engine) as db:
+        db.add(NotificationPreference(user_id=user_id, reminders_enabled=True,
+                                      categories=["payment_completed"], reminder_offsets=[0]))
+        obligation = Obligation(
+            user_id=user_id, provider="Worker provider", item_name="Worker plan", category="other",
+            total_amount=Decimal("10.00"), monthly_installment_amount=Decimal("10.00"),
+            start_date=date.today(), term_months=1, due_day_of_month=1,
+            status="active", source="manual_entry",
+        )
+        db.add(obligation); db.flush()
+        occurrence = PaymentOccurrence(
+            user_id=user_id, obligation_id=obligation.id, occurrence_key="worker-delete",
+            payment_kind="regular", due_date=date.today(), scheduled_amount=Decimal("10.00"),
+            state="paid", paid_at=now,
+        )
+        db.add(occurrence); db.flush()
+        token_hash, ciphertext, nonce = encrypt_push_token(
+            settings, "ExpoPushToken[WorkerDeleteRaceToken1234567890]", user_id, pair["session_id"])
+        device = PushDevice(user_id=user_id, session_id=pair["session_id"], token_hash=token_hash,
+                            token_ciphertext=ciphertext, token_nonce=nonce, token_key_id="v1",
+                            platform="android", active=True)
+        db.add(device); db.flush()
+        notification = Notification(
+            user_id=user_id, obligation_id=obligation.id, occurrence_id=occurrence.id,
+            notification_type="payment_completed", deduplication_key=f"worker-delete:{user_id}",
+            scheduled_at=now, title="Payment marked", body="You marked it paid",
+            route="obligation_detail", delivery_state="sending",
+        )
+        db.add(notification); db.flush()
+        delivery = NotificationDelivery(notification_id=notification.id, device_id=device.id,
+                                         delivery_state="sending", attempt_count=1,
+                                         lease_until=now + timedelta(seconds=30))
+        db.add(delivery); db.commit(); delivery_id = delivery.id
+
+    class BlockingProvider:
+        def __init__(self):
+            self.entered, self.release, self.sent = Event(), Event(), []
+        def send(self, token, title, body, data):
+            self.entered.set()
+            assert self.release.wait(timeout=3)
+            self.sent.append(token)
+            return SendResult(True, ticket_id="bounded-test-ticket")
+
+    provider = BlockingProvider()
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        worker_future = pool.submit(_send_one, engine, delivery_id, settings, provider, now)
+        assert provider.entered.wait(timeout=3)
+        deletion_future = pool.submit(_deletion_auth, client, pair["access_token"])
+        time.sleep(0.15)
+        assert not deletion_future.done()
+        provider.release.set()
+        worker_future.result(timeout=5)
+        deletion_response = deletion_future.result(timeout=10)
+    assert deletion_response.status_code == 204
+    assert len(provider.sent) == 1
+    _send_one(engine, delivery_id, settings, provider, now)
+    run_once(engine, settings, provider, now)
+    assert len(provider.sent) == 1

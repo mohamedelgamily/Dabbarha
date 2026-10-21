@@ -1,13 +1,16 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_db
+from app.db.account_lock import lock_account_row
 from app.core.security import DUMMY_PASSWORD_HASH, create_access_token, hash_password, verify_password
 from app.core.api_security import source_ip
+from app.schemas.account_deletion import AccountDeletionRequest
 from app.models.user import User
 from app.schemas.auth import Token, UserCreate, UserLogin, UserResponse, UserUpdate
+from app.services.account_ids import allocate_sqlite_user_id, advance_account_id_highwater
 
 router = APIRouter()
 
@@ -36,6 +39,7 @@ def register(
     with request.app.state.security.password_slot():
         encoded_password = hash_password(user_in.password)
     user = User(
+        id=allocate_sqlite_user_id(db) if db.get_bind().dialect.name == "sqlite" else None,
         name=user_in.name.strip(),
         email=normalized_email,
         password_hash=encoded_password,
@@ -56,6 +60,63 @@ def register(
         raise
 
     return user
+
+
+@router.delete(
+    "/account",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Permanently delete the authenticated account and its data",
+)
+def delete_account(
+    body: AccountDeletionRequest,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    user_id = current_user.id
+    stored_hash = current_user.password_hash
+    runtime = request.app.state.security
+    reservation = runtime.login_reserve(current_user.email, source_ip(request.scope))
+    try:
+        with runtime.password_slot():
+            password_matches = verify_password(body.password, stored_hash)
+    except HTTPException:
+        runtime.limiter.release(reservation)
+        raise
+    except Exception:
+        runtime.limiter.release(reservation)
+        raise HTTPException(503, "Account security is temporarily unavailable. Please try again.",
+                            headers={"Retry-After": "1"}) from None
+    if not password_matches:
+        raise HTTPException(401, "Password confirmation failed.", headers={"WWW-Authenticate": "Bearer"})
+    runtime.limiter.release(reservation)
+
+    # End the authentication read transaction before taking the same per-user
+    # lock held by push sends. A failed lock/delete rolls the complete cascade back.
+    db.rollback()
+    try:
+        if not lock_account_row(db, user_id):
+            db.rollback()
+            raise HTTPException(401, "Could not validate credentials.",
+                                headers={"WWW-Authenticate": "Bearer"})
+        advance_account_id_highwater(db, user_id)
+        deleted = db.execute(delete(User).where(User.id == user_id)).rowcount
+        if deleted != 1:
+            db.rollback()
+            raise HTTPException(401, "Could not validate credentials.",
+                                headers={"WWW-Authenticate": "Bearer"})
+        db.commit()
+    except HTTPException:
+        raise
+    except SQLAlchemyError:
+        db.rollback()
+        from app.services.sessions import unavailable
+        raise unavailable() from None
+    except Exception:
+        db.rollback()
+        raise HTTPException(503, "Account deletion could not be completed. Please try again.",
+                            headers={"Retry-After": "1"}) from None
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post(

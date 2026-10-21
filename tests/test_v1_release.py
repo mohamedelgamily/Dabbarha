@@ -76,6 +76,7 @@ def test_application_has_no_retired_imports_or_provider_requirements() -> None:
     assert set(Base.metadata.tables) == {
         'users', 'obligations', 'obligation_installments', 'auth_sessions',
         'auth_refresh_tokens', 'legacy_access_revocations',
+        'account_id_sequence',
     } | phase2d_tables
     required_owners = {
         'notification_preferences': {'users.id'},
