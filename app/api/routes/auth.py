@@ -69,6 +69,8 @@ def login(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Token:
+    if not request.app.state.sessions.settings.legacy_issuance:
+        raise HTTPException(410, "Please update the app to use device sessions.")
     normalized_email = credentials.email.strip().lower()
 
     stmt = select(User).where(User.email == normalized_email)

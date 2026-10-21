@@ -11,6 +11,7 @@ def create_app_engine(url: str, **kwargs: Any) -> Engine:
     connect_args = kwargs.pop("connect_args", {})
     if url.startswith("sqlite"):
         connect_args.setdefault("check_same_thread", False)
+    kwargs.setdefault("hide_parameters", True)
     result = create_engine(url, connect_args=connect_args, **kwargs)
     if result.dialect.name == "sqlite":
         @event.listens_for(result, "connect")

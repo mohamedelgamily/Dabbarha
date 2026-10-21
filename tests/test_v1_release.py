@@ -69,7 +69,7 @@ def test_application_has_no_retired_imports_or_provider_requirements() -> None:
     requirements = (ROOT / 'requirements.txt').read_text().lower()
     assert 'google-genai' not in requirements
     assert 'groq' not in requirements
-    assert set(Base.metadata.tables) == {'users', 'obligations'}
+    assert set(Base.metadata.tables) == {'users', 'obligations', 'auth_sessions', 'auth_refresh_tokens', 'legacy_access_revocations'}
 
 
 @pytest.fixture

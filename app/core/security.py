@@ -37,9 +37,26 @@ def create_access_token(subject: str, expires_delta: timedelta | None = None) ->
 
 
 def decode_access_token(token: str) -> dict[str, Any]:
-    return jwt.decode(
-        token,
-        JWT_SECRET_KEY,
-        algorithms=[JWT_ALGORITHM],
-        options={"require": ["sub", "exp"]},
-    )
+    try:
+        payload = jwt.decode(
+            token,
+            JWT_SECRET_KEY,
+            algorithms=[JWT_ALGORITHM],
+            options={"require": ["sub", "exp"]},
+        )
+    except (OverflowError, TypeError, ValueError):
+        raise jwt.InvalidTokenError("Invalid access claims") from None
+
+    # Any new-protocol marker requires the entire v2 claim set; no legacy fallback.
+    if any(key in payload for key in ("ver", "sid", "jti", "token_use", "iat")):
+        from uuid import UUID
+        try:
+            if (type(payload.get("ver")) is not int or payload["ver"] != 2
+                or payload.get("token_use") != "access" or type(payload.get("iat")) is not int
+                or type(payload.get("exp")) is not int or payload["iat"] >= payload["exp"]
+                or str(UUID(payload["sid"])) != payload["sid"]
+                or str(UUID(payload["jti"])) != payload["jti"]):
+                raise ValueError()
+        except (ValueError, TypeError, KeyError, AttributeError):
+            raise jwt.InvalidTokenError("Invalid session access claims") from None
+    return payload

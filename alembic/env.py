@@ -9,7 +9,11 @@ from app.db.migration_policy import include_object
 from app import models
 
 config = context.config
-config.set_main_option("sqlalchemy.url", DATABASE_URL)
+# ConfigParser uses ``%`` for interpolation. SQLAlchemy URLs may contain
+# percent-encoded components (for example, PostgreSQL Unix-socket paths), so
+# escape them at this boundary; Alembic's subsequent config lookup restores
+# the original URL for SQLAlchemy.
+config.set_main_option("sqlalchemy.url", DATABASE_URL.replace("%", "%%"))
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)

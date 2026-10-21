@@ -10,10 +10,13 @@ from app.core.config import API_DOCS_ENABLED, SETTINGS
 from app.core.api_security_settings import APISecuritySettings
 from app.core.api_security import SecurityRuntime
 from app.core.rate_limit import StoreUnavailable
+from app.core.session_settings import SessionSettings
+from app.services.sessions import SessionService
 from app.core.request_security import RequestSecurityMiddleware
 
 from app.api.routes.affordability import router as affordability_router
 from app.api.routes.auth import router as auth_router
+from app.api.routes.sessions import router as sessions_router
 from app.api.routes.dashboard import router as dashboard_router
 from app.api.routes.forecast import router as forecast_router
 from app.api.routes.obligations import router as obligations_router
@@ -41,6 +44,7 @@ app = FastAPI(
 )
 
 app.state.security = SecurityRuntime(APISecuritySettings.from_environ(SETTINGS.app_env))
+app.state.sessions = SessionService(SessionSettings.from_environ())
 app.add_middleware(RequestSecurityMiddleware)
 
 
@@ -58,6 +62,8 @@ async def request_validation_error_handler(request: Request, exc: RequestValidat
 @app.exception_handler(SQLAlchemyError)
 async def database_error_handler(request: Request, exc: SQLAlchemyError) -> JSONResponse:
     # Never return SQL, parameters, driver messages or stack traces to clients.
+    if request.url.path.startswith("/auth/") and request.url.path != "/auth/me":
+        return JSONResponse(status_code=503, content={"detail": "Authentication storage is temporarily unavailable."})
     if isinstance(exc, IntegrityError):
         return JSONResponse(
             status_code=409,
@@ -70,6 +76,7 @@ async def database_error_handler(request: Request, exc: SQLAlchemyError) -> JSON
 
 
 app.include_router(auth_router, prefix="/auth", tags=["auth"])
+app.include_router(sessions_router, prefix="/auth", tags=["auth"])
 app.include_router(obligations_router, prefix="/obligations", tags=["obligations"])
 app.include_router(forecast_router, prefix="/forecast", tags=["forecast"])
 app.include_router(dashboard_router, prefix="/dashboard", tags=["dashboard"])

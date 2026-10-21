@@ -144,3 +144,23 @@ a production installation or a choice to change an existing deployed service.
 Use a supported, patched Redis server matching the reviewed client compatibility;
 do not assume an arbitrary distribution package matches the tested baseline.
 The full Python environment scan is recorded in the Phase 2b.5 verification report.
+
+## Phase 2b.6 addition (locally verified; production deployment pending)
+
+The approved encrypted-receipt/session architecture adds PyCryptodomex 3.24.1
+for AES-256-GCM and psycopg/psycopg-binary 3.3.6 for disposable PostgreSQL tests
+and future explicit PostgreSQL configuration. Existing pinned distributions remain
+unchanged. No chatbot provider dependency is reintroduced. Production PostgreSQL
+deployment remains separately approved. The Linux lock includes the complete
+44-distribution target graph. The binary driver bundles libpq; deployment must
+track its security updates as well as Python package advisories.
+
+An initial cryptography 48.0.1 candidate was rejected by the advisory scan (three
+distinct advisories, six duplicate records). Version 50.0.2 lacked Intel macOS
+wheels; PyCryptodomex supports both required environments without adding a Rust
+build toolchain. The final environment was rebuilt cleanly from revised manifests;
+cryptography and provider stacks are absent. Historical earlier-phase counts above
+remain historical evidence. The clean environment passed the external macOS suite
+with disposable SQLite, PostgreSQL and Redis integration services, and the fresh
+dependency scan found no known vulnerabilities. This is not Ubuntu execution or a
+production PostgreSQL deployment.

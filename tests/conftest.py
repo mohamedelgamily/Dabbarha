@@ -6,6 +6,9 @@ import secrets
 os.environ.update(
     APP_ENV="test",
     RATE_LIMIT_BACKEND="memory",
+    SESSION_AUTH_ENABLED="false",
+    SESSION_LEGACY_ISSUANCE="true",
+    SESSION_LEGACY_ACCEPTANCE="true",
     JWT_SECRET_KEY=secrets.token_urlsafe(48),
     JWT_ALGORITHM="HS256",
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES="60",

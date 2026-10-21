@@ -1,6 +1,6 @@
 # Exact resolved versions for CPython 3.12, Ubuntu 24.04 x86_64.
-# Also tested locally on macOS Intel + SQLite. Refreshed during Phase 2b.5 (Redis client added).
-# Includes the existing test dependencies; PostgreSQL driver/deployment is deferred.
+# Also tested locally on macOS Intel + SQLite. Refreshed during Phase 2b.6 (receipt encryption and PostgreSQL driver).
+# Includes test dependencies; PostgreSQL deployment requires separate approval.
 # Install -r requirements.txt to apply these pins. See docs/dependencies.md.
 alembic==1.19.1
 annotated-doc==0.0.5
@@ -25,8 +25,11 @@ Mako==1.4.3
 MarkupSafe==3.0.3
 packaging==26.3
 pluggy==1.6.0
+psycopg==3.3.6
+psycopg-binary==3.3.6
 pwdlib==0.3.1
 pycparser==3.0
+pycryptodomex==3.24.1
 pydantic==2.13.4
 pydantic_core==2.46.4
 Pygments==2.21.0

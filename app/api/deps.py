@@ -4,6 +4,7 @@ import jwt
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.security import decode_access_token
 from app.db.database import SessionLocal
@@ -45,9 +46,15 @@ def get_current_user(
     except (jwt.PyJWTError, ValueError):
         raise credentials_exception
 
-    user = db.get(User, user_id)
+    request.app.state.sessions.authorize(db, payload, token)
+    try:
+        user = db.get(User, user_id)
+    except SQLAlchemyError:
+        from app.services.sessions import unavailable
+        raise unavailable() from None
     if user is None:
         raise credentials_exception
 
+    request.state.auth_payload = payload
     request.app.state.security.financial(request, user.id)
     return user

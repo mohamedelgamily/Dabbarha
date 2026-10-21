@@ -72,7 +72,8 @@ class RequestSecurityMiddleware:
             root = scope.get("root_path", "")
             if root and path.startswith(root + "/"):
                 path = path[len(root):]
-            if scope["method"] == "POST" and path.rstrip("/") in {"/auth/login", "/auth/register"}:
+            if scope["method"] == "POST" and (path.rstrip("/") in {"/auth/login", "/auth/register", "/auth/sessions", "/auth/refresh", "/auth/logout"}
+                or (path.startswith("/auth/sessions/") and path.rstrip("/").endswith("/revoke"))):
                 await run_in_threadpool(runtime.auth_ip, path.rstrip("/"), source_ip(scope))
             buffered, size = bytearray(), 0
             try:

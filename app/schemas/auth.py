@@ -16,7 +16,14 @@ class UserCreate(BaseModel):
 
     name: TrimmedText = Field(..., min_length=1, max_length=120)
     email: EmailStr
-    password: str = Field(..., min_length=1)
+    password: str = Field(..., min_length=8, max_length=128)
+
+    @field_validator("password")
+    @classmethod
+    def validate_registration_password(cls, value: str) -> str:
+        if not value.strip() or any(0xD800 <= ord(char) <= 0xDFFF for char in value):
+            raise ValueError("Password must contain non-whitespace text and valid Unicode.")
+        return value
 
 
 class UserUpdate(BaseModel):
@@ -68,6 +75,13 @@ class UserResponse(BaseModel):
 class UserLogin(BaseModel):
     email: EmailStr
     password: str = Field(..., min_length=1)
+
+    @field_validator("password")
+    @classmethod
+    def validate_login_unicode(cls, value: str) -> str:
+        if any(0xD800 <= ord(char) <= 0xDFFF for char in value):
+            raise ValueError("Password must contain valid Unicode.")
+        return value
 
 
 class Token(BaseModel):
