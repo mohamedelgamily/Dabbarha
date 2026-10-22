@@ -4,6 +4,7 @@ import jwt
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.security import decode_access_token
@@ -29,6 +30,11 @@ def get_current_user(
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> User:
+    return resolve_current_user(request, token, db)
+
+
+def resolve_current_user(request: Request, token: str, db: Session) -> User:
+    """Shared credential resolution for ordinary and audited admin dependencies."""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -46,8 +52,10 @@ def get_current_user(
     except (jwt.PyJWTError, ValueError):
         raise credentials_exception
 
-    request.app.state.sessions.authorize(db, payload, token)
     try:
+        if request.url.path.startswith("/admin/") and db.get_bind().dialect.name == "postgresql":
+            db.execute(text("SET LOCAL statement_timeout = '3000ms'"))
+        request.app.state.sessions.authorize(db, payload, token)
         user = db.get(User, user_id)
     except SQLAlchemyError:
         from app.services.sessions import unavailable

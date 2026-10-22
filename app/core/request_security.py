@@ -75,6 +75,8 @@ class RequestSecurityMiddleware:
             if scope["method"] == "POST" and (path.rstrip("/") in {"/auth/login", "/auth/register", "/auth/sessions", "/auth/refresh", "/auth/logout", "/admin/auth/step-up"}
                 or (path.startswith("/auth/sessions/") and path.rstrip("/").endswith("/revoke"))):
                 await run_in_threadpool(runtime.auth_ip, path.rstrip("/"), source_ip(scope))
+            if path.startswith("/admin/"):
+                await run_in_threadpool(runtime.admin_ip, source_ip(scope))
             buffered, size = bytearray(), 0
             try:
                 with anyio.fail_after(settings.body_timeout):

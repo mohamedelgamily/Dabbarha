@@ -39,6 +39,7 @@ from app.services.notification_worker import _send_one, run_once
 from app.services.notifications import encrypt_push_token
 from app.services.sessions import SessionService, digest
 from app.services.push_provider import SendResult
+from tests.postgres_test_support import initialize_disposable_postgres
 
 
 @pytest.fixture(scope="session")
@@ -51,10 +52,7 @@ def postgres_service():
     import psycopg
     with tempfile.TemporaryDirectory(prefix="dabbarha-pg-", dir="/tmp") as directory:
         root = Path(directory)
-        init = subprocess.run([str(Path(binary_dir)/"initdb"), "-D", str(root/"data"),
-                               "--no-locale", "--encoding=UTF8", "--auth=trust", "--username=dabbarha_test"],
-                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        assert init.returncode == 0, "Disposable PostgreSQL init failed (output suppressed)."
+        initialize_disposable_postgres(binary_dir, root / "data", root)
         with (root/"server.log").open("w") as log:
             proc = subprocess.Popen([str(Path(binary_dir)/"postgres"), "-D", str(root/"data"),
                 "-k", directory, "-h", "", "-c", "unix_socket_permissions=0700"], stdout=log, stderr=log)
@@ -481,6 +479,7 @@ def test_additive_migration_and_downgrade_only_disposable_db(session_db):
         command.upgrade(cfg,"head")
         assert "account_id_sequence" in inspect(session_db).get_table_names()
         assert "admin_audit_events" in inspect(session_db).get_table_names()
+        assert "worker_heartbeats" in inspect(session_db).get_table_names()
         assert {"admin_role", "admin_totp_nonce", "admin_totp_ciphertext", "admin_totp_key_id", "admin_totp_last_step"} <= {
             column["name"] for column in inspect(session_db).get_columns("users")}
         from app.models.account_id_sequence import AccountIdSequence
@@ -498,12 +497,14 @@ def test_additive_migration_and_downgrade_only_disposable_db(session_db):
                     & set(inspect(session_db).get_table_names()))
         assert "account_id_sequence" not in inspect(session_db).get_table_names()
         assert "admin_audit_events" not in inspect(session_db).get_table_names()
+        assert "worker_heartbeats" not in inspect(session_db).get_table_names()
         assert "admin_role" not in {column["name"] for column in inspect(session_db).get_columns("users")}
         assert "obligation_installments" not in inspect(session_db).get_table_names()
         assert "purchase_price" not in {column["name"] for column in inspect(session_db).get_columns("obligations")}
         with Session(session_db) as db:assert db.scalar(text("SELECT password_hash FROM users"))=="existing-hash"
         command.upgrade(cfg,"head")
         assert "admin_audit_events" in inspect(session_db).get_table_names()
+        assert "worker_heartbeats" in inspect(session_db).get_table_names()
 
 
 def test_admin_totp_step_up_is_session_bound_audited_and_replay_safe(session_api, monkeypatch):
@@ -535,7 +536,7 @@ def test_admin_totp_step_up_is_session_bound_audited_and_replay_safe(session_api
     assert client.post("/admin/auth/step-up", json={"code": code}, headers=headers).status_code == 401
     with Session(engine) as db:
         events = db.scalars(select(AdminAuditEvent).order_by(AdminAuditEvent.id)).all()
-        assert [event.outcome for event in events] == ["success", "failure"]
+        assert [event.outcome for event in events] == ["success", "success", "failure"]
         assert all(not hasattr(event, "code") and not hasattr(event, "token") for event in events)
         user = db.get(User, uid)
         user.admin_role = "user"  # A live role downgrade invalidates the still-unexpired step-up token.

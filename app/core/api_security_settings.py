@@ -24,6 +24,8 @@ class APISecuritySettings:
     read_limit: int = 120
     forecast_limit: int = 30
     affordability_limit: int = 10
+    admin_limit: int = 60
+    admin_ip_limit: int = 120
     financial_window: int = 60
     body_bytes: int = 65536
     json_depth: int = 64
@@ -77,6 +79,8 @@ class APISecuritySettings:
             "read_limit": ("RATE_LIMIT_READS", 120, 100000),
             "forecast_limit": ("RATE_LIMIT_FORECAST", 30, 100000),
             "affordability_limit": ("RATE_LIMIT_AFFORDABILITY", 10, 100000),
+            "admin_limit": ("RATE_LIMIT_ADMIN", 60, 100000),
+            "admin_ip_limit": ("RATE_LIMIT_ADMIN_IP", 120, 100000),
             "financial_window": ("RATE_LIMIT_FINANCIAL_WINDOW_SECONDS", 60, 604800),
             "body_bytes": ("API_MAX_BODY_BYTES", 65536, 1048576),
             "json_depth": ("API_MAX_JSON_DEPTH", 64, 128),

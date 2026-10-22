@@ -17,3 +17,6 @@ __all__ += ["Notification", "NotificationDelivery", "NotificationPreference",
 
 from app.models.admin_audit import AdminAuditEvent
 __all__ += ["AdminAuditEvent"]
+
+from app.models.admin_operations import WorkerHeartbeat
+__all__ += ["WorkerHeartbeat"]

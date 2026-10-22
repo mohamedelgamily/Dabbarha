@@ -11,6 +11,10 @@ def create_app_engine(url: str, **kwargs: Any) -> Engine:
     connect_args = kwargs.pop("connect_args", {})
     if url.startswith("sqlite"):
         connect_args.setdefault("check_same_thread", False)
+    elif url.startswith(("postgresql://", "postgresql+psycopg://")):
+        # Bound cold health/admin authentication failures without overriding a
+        # caller-supplied driver timeout.
+        connect_args.setdefault("connect_timeout", 5)
     kwargs.setdefault("hide_parameters", True)
     result = create_engine(url, connect_args=connect_args, **kwargs)
     if result.dialect.name == "sqlite":

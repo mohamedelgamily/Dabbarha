@@ -39,6 +39,10 @@ class SecurityRuntime:
             return
         self.limiter.reserve([self.limiter.rule(group, ip, limit, window)])
 
+    def admin_ip(self, ip: str):
+        s = self.settings
+        self.limiter.reserve([self.limiter.rule("admin_ip", ip, s.admin_ip_limit, 60)])
+
     def refresh_ip(self, ip):
         policy = self.session_settings
         self.limiter.reserve([self.limiter.rule("refresh_ip", ip, policy.refresh_ip_limit, 60)])
@@ -64,6 +68,11 @@ class SecurityRuntime:
         path = path.rstrip("/")
         # Bucket keys use the category and verified user, never path/record IDs.
         if not force and path.startswith("/auth/") and path != "/auth/me" and not path.startswith("/auth/sessions"):
+            return
+        if path == "/admin/auth/step-up":
+            return
+        if path.startswith("/admin/"):
+            self.limiter.reserve([self.limiter.rule("admin", str(user_id), s.admin_limit, s.financial_window)])
             return
         write = request.method in {"POST", "PUT", "PATCH", "DELETE"} and path != "/affordability"
         group, limit = ("writes", s.write_limit) if write else ("reads", s.read_limit)

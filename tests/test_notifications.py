@@ -31,6 +31,7 @@ from app.models.notifications import (
 )
 from app.models.obligation import Obligation, ObligationInstallment
 from app.models.user import User
+from app.models.admin_operations import WorkerHeartbeat
 from app.services.notification_worker import _claim_batch, _current_notification, materialize_due_deliveries, run_once
 from app.services.notifications import (
     decrypt_push_token, encrypt_push_token, materialize_occurrence,
@@ -39,6 +40,7 @@ from app.services.notifications import (
 from app.services.payment_occurrences import clamped_due_date, expected_occurrences
 from app.services.push_provider import ExpoPushAdapter, MockPushAdapter, SendResult
 from app.schemas.notifications import NotificationPreferencesUpdate, PushDeviceCreate
+from tests.postgres_test_support import initialize_disposable_postgres
 
 
 @pytest.fixture(scope="module")
@@ -51,10 +53,7 @@ def notification_postgres_service():
     import psycopg
     with tempfile.TemporaryDirectory(prefix="dabbarha-notify-pg-", dir="/tmp") as directory:
         root = Path(directory)
-        init = subprocess.run([str(Path(binary_dir)/"initdb"), "-D", str(root/"data"),
-                               "--no-locale", "--encoding=UTF8", "--auth=trust", "--username=dabbarha_test"],
-                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        assert init.returncode == 0, "Disposable PostgreSQL init failed (output suppressed)."
+        initialize_disposable_postgres(binary_dir, root / "data", root)
         with (root/"server.log").open("w") as log:
             proc = subprocess.Popen([str(Path(binary_dir)/"postgres"), "-D", str(root/"data"),
                 "-k", directory, "-h", "", "-c", "unix_socket_permissions=0700"], stdout=log, stderr=log)
@@ -340,6 +339,9 @@ def test_worker_materializes_once_and_respects_paid_state(tmp_path):
         with Session(engine) as db:
             delivery = db.scalar(select(NotificationDelivery).where(NotificationDelivery.notification_id == event_row_id))
             assert delivery.delivery_state == "accepted"
+            heartbeat = db.get(WorkerHeartbeat, "notification-worker")
+            assert heartbeat is not None and heartbeat.cycle_count >= 3
+            assert heartbeat.last_success_at is not None and heartbeat.last_error_category is None
     finally:
         engine.dispose()
 

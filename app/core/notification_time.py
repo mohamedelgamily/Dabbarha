@@ -31,5 +31,6 @@ def quiet_adjust(day: date, at: time, start: time | None, end: time | None) -> t
 
 
 def safe_now(value: datetime | None = None) -> datetime:
+    """Return an aware UTC instant; naive database timestamps are UTC by convention."""
     value = value or datetime.now(timezone.utc)
     return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)

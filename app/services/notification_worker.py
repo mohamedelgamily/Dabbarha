@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import and_, or_, select, update
+from sqlalchemy import and_, case, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session, sessionmaker
@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.db.account_lock import lock_account_row
 from app.core.notification_time import safe_now
 from app.models.auth_session import AuthSession
+from app.models.admin_operations import WorkerHeartbeat
 from app.models.notifications import (
     Notification, NotificationDelivery, NotificationPreference,
     PaymentOccurrence, PushDevice,
@@ -360,16 +361,79 @@ def process_receipts(engine, settings, provider, now: datetime | None = None) ->
     return len(ids)
 
 
+def _record_worker_heartbeat(engine, now: datetime, success: bool, counts: dict[str, int] | None = None) -> None:
+    """Persist only account-free, bounded worker health information."""
+    # Keep heartbeat instants UTC-aware. SQLite drops timezone metadata, so its
+    # naive values follow the documented convention that stored wall time is UTC.
+    now = safe_now(now)
+    counts = counts or {}
+    values = {
+        "component": "notification-worker", "last_seen_at": now,
+        "last_success_at": now if success else None,
+        "last_error_category": None if success else "worker_cycle_failed",
+        "cycle_count": 1,
+        "last_scheduled": max(0, int(counts.get("scheduled", 0))),
+        "last_deliveries": max(0, int(counts.get("deliveries", 0))),
+        "last_receipts": max(0, int(counts.get("receipts", 0))),
+    }
+    factory = _sessions(engine)
+    try:
+        with factory.begin() as db:
+            dialect = db.get_bind().dialect.name
+            if dialect in {"postgresql", "sqlite"}:
+                insert = pg_insert if dialect == "postgresql" else sqlite_insert
+                table = WorkerHeartbeat.__table__
+                excluded = insert(table).excluded
+                statement = insert(table).values(**values).on_conflict_do_update(
+                    index_elements=[table.c.component],
+                    set_={
+                        "last_seen_at": excluded.last_seen_at,
+                        "last_success_at": case((success, excluded.last_seen_at),
+                                                else_=table.c.last_success_at),
+                        "last_error_category": None if success else "worker_cycle_failed",
+                        "cycle_count": table.c.cycle_count + 1,
+                        "last_scheduled": excluded.last_scheduled if success else table.c.last_scheduled,
+                        "last_deliveries": excluded.last_deliveries if success else table.c.last_deliveries,
+                        "last_receipts": excluded.last_receipts if success else table.c.last_receipts,
+                    },
+                )
+                db.execute(statement)
+            else:
+                row = db.get(WorkerHeartbeat, "notification-worker")
+                if row is None:
+                    db.add(WorkerHeartbeat(**values))
+                else:
+                    row.last_seen_at = now
+                    row.cycle_count += 1
+                    row.last_error_category = None if success else "worker_cycle_failed"
+                    if success:
+                        row.last_success_at = now
+                        row.last_scheduled = values["last_scheduled"]
+                        row.last_deliveries = values["last_deliveries"]
+                        row.last_receipts = values["last_receipts"]
+    except Exception:
+        # Telemetry must never expose exception details or break delivery. A
+        # missing/stale heartbeat will make the health endpoint report unknown.
+        return
+
+
 def run_once(engine, settings, provider, now: datetime | None = None) -> dict[str, int]:
     now = safe_now(now)
     if not settings.enabled:
         return {"scheduled": 0, "deliveries": 0, "receipts": 0}
-    scheduled = synchronize_schedules(engine, now)
-    if not settings.delivery_enabled:
-        return {"scheduled": scheduled, "deliveries": 0, "receipts": 0}
-    materialized = materialize_due_deliveries(engine, now, settings.worker_batch_size)
-    delivery_ids = _claim_batch(engine, now, settings)
-    for delivery_id in delivery_ids:
-        _send_one(engine, delivery_id, settings, provider, now)
-    receipt_count = process_receipts(engine, settings, provider, now)
-    return {"scheduled": scheduled, "deliveries": len(delivery_ids), "receipts": receipt_count}
+    try:
+        scheduled = synchronize_schedules(engine, now)
+        if not settings.delivery_enabled:
+            counts = {"scheduled": scheduled, "deliveries": 0, "receipts": 0}
+        else:
+            materialize_due_deliveries(engine, now, settings.worker_batch_size)
+            delivery_ids = _claim_batch(engine, now, settings)
+            for delivery_id in delivery_ids:
+                _send_one(engine, delivery_id, settings, provider, now)
+            receipt_count = process_receipts(engine, settings, provider, now)
+            counts = {"scheduled": scheduled, "deliveries": len(delivery_ids), "receipts": receipt_count}
+    except Exception:
+        _record_worker_heartbeat(engine, now, False)
+        raise
+    _record_worker_heartbeat(engine, now, True, counts)
+    return counts
