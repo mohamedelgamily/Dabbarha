@@ -1,7 +1,7 @@
 # Future administrator dashboard handoff
 
 This is a backend contract and security handoff only. No browser or mobile
-frontend is included in Phase 2f.1.
+frontend is included in Phases 2f.1–2f.3.
 
 Phase 2f.1 endpoints:
 
@@ -19,11 +19,11 @@ Future phase boundary:
 
 - **2f.2 operational APIs:** aggregate metrics, system health, bounded account
   metadata search, and redacted notification operations. No financial detail.
-- **2f.3 support inspection:** exact user, explicit support/security reason and
-  case reference, fixed least-privilege scope, recent TOTP, maximum 15-minute
-  grant, read-only pagination, no bulk export, and enhanced audit. Prefer another
-  administrator's approval; any superadmin self-approval must be exceptional,
-  clearly marked, visible in security review, and operationally alerted.
+- **2f.3 support inspection:** implemented as the exact endpoints in
+  `admin-financial-support.md`: case-bound least-privilege scopes, 15-minute
+  grants, per-read TOTP, read-only pagination, no export, and enhanced audit.
+  Prefer another administrator's approval; exceptional self-approval is marked
+  in the audit trail and requires production alert configuration.
 - No admin API may edit financial records, mark payments paid, impersonate a user,
   recreate deleted records, or expose credentials, hashes, JWTs, refresh tokens,
   private keys or raw push tokens.

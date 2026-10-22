@@ -47,12 +47,22 @@ termination.
   attempts and timing, not private notification copy or raw provider errors.
   There is intentionally no manual retry action.
 
-Operational admins and superadmins have the same Phase 2f.2 access. This phase
-does not expose financial profiles, obligations, installment/payment amounts,
-or mark-as-paid functions. It provides no impersonation or editing controls.
-Phase 2f.3 temporary, audited, read-only support inspection remains pending;
-do not build a financial-data inspection UI before that phase is approved and
-implemented. The premium browser dashboard itself also remains pending.
+Operational admins and superadmins have the same Phase 2f.2 operational access.
+Neither role has standing permission to see financial data. Phase 2f.3 adds a
+separate superadmin-only support workflow: request a case-bound grant, obtain
+independent approval where another superadmin is available (or explicitly
+self-approve with enhanced audit evidence), then perform only the granted
+read-only scopes from the exact requesting v2 session. The grant expires 15
+minutes from request and approval does not extend it. Every individual
+financial read requires a newly generated `X-Admin-TOTP` code; it is one-use
+and must never be logged or sent to analytics. Use the documented endpoints,
+pagination, 404/403/429/503 states, and no-store behavior in
+[`admin-financial-support.md`](admin-financial-support.md).
+
+Do not add unrestricted financial browsing, wildcard search, export,
+impersonation, editing, payment marking or a standing support permission. A
+deleted target loses its grant and user-linked audit references. The premium
+browser dashboard itself remains pending.
 
 ## UX and security states
 

@@ -480,6 +480,8 @@ def test_additive_migration_and_downgrade_only_disposable_db(session_db):
         assert "account_id_sequence" in inspect(session_db).get_table_names()
         assert "admin_audit_events" in inspect(session_db).get_table_names()
         assert "worker_heartbeats" in inspect(session_db).get_table_names()
+        assert "admin_financial_support_grants" in inspect(session_db).get_table_names()
+        assert "support_grant_id" in {column["name"] for column in inspect(session_db).get_columns("admin_audit_events")}
         assert {"admin_role", "admin_totp_nonce", "admin_totp_ciphertext", "admin_totp_key_id", "admin_totp_last_step"} <= {
             column["name"] for column in inspect(session_db).get_columns("users")}
         from app.models.account_id_sequence import AccountIdSequence
@@ -490,6 +492,9 @@ def test_additive_migration_and_downgrade_only_disposable_db(session_db):
             db.execute(text("INSERT INTO users (name, email, password_hash, monthly_income, fixed_expenses, currency) "
                             "VALUES ('Preserved', 'preserved@example.com', 'existing-hash', 0, 0, 'EGP')"))
             db.commit()
+        command.downgrade(cfg,"2f2a00000001")
+        assert "admin_financial_support_grants" not in inspect(session_db).get_table_names()
+        assert "support_grant_id" not in {column["name"] for column in inspect(session_db).get_columns("admin_audit_events")}
         command.downgrade(cfg,"17d4d0e39961")
         assert "auth_sessions" not in inspect(session_db).get_table_names()
         assert not ({"notification_preferences", "notification_devices", "payment_occurrences",
@@ -505,6 +510,7 @@ def test_additive_migration_and_downgrade_only_disposable_db(session_db):
         command.upgrade(cfg,"head")
         assert "admin_audit_events" in inspect(session_db).get_table_names()
         assert "worker_heartbeats" in inspect(session_db).get_table_names()
+        assert "admin_financial_support_grants" in inspect(session_db).get_table_names()
 
 
 def test_admin_totp_step_up_is_session_bound_audited_and_replay_safe(session_api, monkeypatch):

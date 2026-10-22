@@ -28,8 +28,9 @@ from app.main import app
 from app.models.admin_audit import AdminAuditEvent
 from app.models.admin_operations import WorkerHeartbeat
 from app.models.auth_session import AuthSession
-from app.models.notifications import Notification, NotificationDelivery, PushDevice
-from app.models.obligation import Obligation
+from app.models.notifications import Notification, NotificationDelivery, PaymentOccurrence, PushDevice
+from app.models.obligation import Obligation, ObligationInstallment
+from app.models.admin_support import FinancialSupportGrant
 from app.models.user import User
 from app.services.sessions import SessionService
 from app.services.admin_security import encrypt_totp_secret, generate_totp_secret, totp_code
@@ -378,3 +379,296 @@ def test_database_health_failure_is_redacted(enrolled_ops_admin, monkeypatch):
     assert response.status_code == 503
     assert "private connection detail" not in response.text
     assert "secret" not in response.text
+
+
+@pytest.fixture
+def enrolled_support_superadmin(ops_client, monkeypatch):
+    client, engine, admin_id, service = ops_client
+    key = secrets.token_bytes(32)
+    policy = AdminSettings(enabled=True, totp_encryption_key=key)
+    monkeypatch.setattr(app.state, "admin_settings", policy)
+    with Session(engine) as db:
+        admin = db.get(User, admin_id)
+        admin.admin_role = "superadmin"
+        secret = generate_totp_secret()
+        admin.admin_totp_nonce, admin.admin_totp_ciphertext = encrypt_totp_secret(secret, admin_id, policy)
+        admin.admin_totp_key_id = policy.totp_key_id
+        target = User(name="Support Target", email="support-target@example.com", password_hash="sensitive-hash")
+        db.add(target)
+        db.flush()
+        target_id = target.id
+        obligation = Obligation(user_id=target_id, provider="Provider", item_name="Phone", category="electronics",
+            total_amount=Decimal("1200.00"), monthly_installment_amount=Decimal("100.00"),
+            purchase_price=Decimal("1200.00"), payment_method="manual", interest_method="none",
+            start_date=date(2026, 1, 1), term_months=12, due_day_of_month=1)
+        db.add(obligation)
+        db.flush()
+        obligation_id = obligation.id
+        db.add(ObligationInstallment(obligation_id=obligation_id, installment_number=1,
+            due_date=date(2026, 1, 1), scheduled_amount=Decimal("100.00"),
+            principal_amount=Decimal("100.00"), interest_amount=Decimal("0.00")))
+        db.add(PaymentOccurrence(user_id=target_id, obligation_id=obligation_id,
+            occurrence_key="schedule-v1-1", payment_kind="regular", due_date=date(2026, 1, 1),
+            scheduled_amount=Decimal("100.00"), schedule_version=1, state="paid",
+            paid_at=datetime(2026, 1, 1, tzinfo=timezone.utc)))
+        target.monthly_income = Decimal("7000.00")
+        target.fixed_expenses = Decimal("3000.00")
+        db.commit()
+    pair = service.create(engine, admin_id, "support-test")
+    now = int(time.time())
+    response = client.post("/admin/auth/step-up", json={"code": totp_code(secret, now // 30)},
+                           headers=bearer(pair))
+    assert response.status_code == 200, response.text
+    headers = {"Authorization": "Bearer " + response.json()["access_token"]}
+    return client, engine, admin_id, target_id, obligation_id, secret, headers
+
+
+def _patch_support_clock(monkeypatch, support_admin, start=None):
+    from types import SimpleNamespace
+    import app.api.routes.admin_support as support_routes
+    current = int(start or time.time())
+    clock = {"now": current}
+    monkeypatch.setattr(support_routes, "time", SimpleNamespace(time=lambda: clock["now"]))
+
+    def fresh_headers():
+        next_step = clock["now"] // 30 + 1
+        clock["now"] = next_step * 30 + 1
+        return {**support_admin[6], "X-Admin-TOTP": totp_code(support_admin[5], next_step)}
+    return clock, fresh_headers
+
+
+def _create_and_self_approve_support_grant(client, headers, target_id, scopes=None):
+    body = {"target_user_id": target_id, "support_case_reference": "CASE-2026-123",
+            "reason_code": "payment_question", "scopes": scopes or ["financial_profile", "obligations", "installments", "payment_statuses"]}
+    created = client.post("/admin/support-grants", json=body, headers=headers)
+    assert created.status_code == 201, created.text
+    grant_id = created.json()["grant_id"]
+    rejected_self_approval = client.post(f"/admin/support-grants/{grant_id}/approve",
+                                         json={"self_approval": False}, headers=headers)
+    assert rejected_self_approval.status_code == 422
+    approved = client.post(f"/admin/support-grants/{grant_id}/approve", json={"self_approval": True}, headers=headers)
+    assert approved.status_code == 200, approved.text
+    assert approved.json()["self_approved"] is True
+    assert approved.json()["expires_at"] == created.json()["expires_at"]
+    return grant_id
+
+
+def test_support_grant_self_approval_scoped_reads_fresh_totp_and_privacy(enrolled_support_superadmin, monkeypatch):
+    client, engine, admin_id, target_id, obligation_id, _, headers = enrolled_support_superadmin
+    grant_id = _create_and_self_approve_support_grant(client, headers, target_id)
+    _, next_headers = _patch_support_clock(monkeypatch, enrolled_support_superadmin)
+
+    missing_totp = client.get(f"/admin/support-grants/{grant_id}/users/{target_id}/financial-profile",
+                              headers=headers)
+    assert missing_totp.status_code == 403
+    profile_headers = next_headers()
+    profile = client.get(f"/admin/support-grants/{grant_id}/users/{target_id}/financial-profile",
+                         headers=profile_headers)
+    assert profile.status_code == 200, profile.text
+    assert profile.json() == {"target_user_id": target_id, "monthly_income": "7000.00",
+                              "fixed_expenses": "3000.00", "currency": "EGP"}
+    assert profile.headers["cache-control"] == "no-store"
+    assert "sensitive-hash" not in profile.text and "password_hash" not in profile.text
+    assert "token" not in profile.text.lower()
+    assert "email" not in profile.json()
+
+    reused = client.get(f"/admin/support-grants/{grant_id}/users/{target_id}/financial-profile",
+                        headers=profile_headers)
+    assert reused.status_code == 403
+
+    obligations = client.get(f"/admin/support-grants/{grant_id}/users/{target_id}/obligations?limit=1",
+                             headers=next_headers())
+    assert obligations.status_code == 200, obligations.text
+    assert obligations.json()["items"][0]["total_amount"] == "1200.00"
+    assert obligations.json()["items"][0]["monthly_installment_amount"] == "100.00"
+    installments = client.get(
+        f"/admin/support-grants/{grant_id}/users/{target_id}/obligations/{obligation_id}/installments?limit=1",
+        headers=next_headers())
+    assert installments.status_code == 200, installments.text
+    assert installments.json()["items"][0]["scheduled_amount"] == "100.00"
+    assert installments.json()["schedule_version"] == 0
+    statuses = client.get(f"/admin/support-grants/{grant_id}/users/{target_id}/payment-statuses?limit=1",
+                          headers=next_headers())
+    assert statuses.status_code == 200, statuses.text
+    assert statuses.json()["items"][0]["state"] == "paid"
+    assert statuses.json()["items"][0]["scheduled_amount"] == "100.00"
+    assert client.get(f"/admin/support-grants/{grant_id}/users/{target_id}/obligations?limit=51",
+                      headers=next_headers()).status_code == 422
+    assert client.get(f"/admin/support-grants/{grant_id}/users/{target_id}/obligations?offset=1001",
+                      headers=next_headers()).status_code == 422
+    with Session(engine) as db:
+        grant = db.get(FinancialSupportGrant, grant_id)
+        events = db.scalars(select(AdminAuditEvent).where(AdminAuditEvent.support_grant_id == grant_id)).all()
+        assert grant is not None and grant.self_approved
+        assert any(event.action == "support_grant_self_approval" and event.outcome == "success" for event in events)
+        assert sum(event.action == "support_financial_read" for event in events) == 4
+        assert any(event.action == "support_financial_denied" and event.outcome == "failure" for event in events)
+        assert set(AdminAuditEvent.__table__.columns.keys()) == {
+            "id", "actor_user_id", "target_user_id", "support_grant_id", "action",
+            "outcome", "source_fingerprint", "created_at",
+        }
+
+
+def test_support_grant_target_scope_expiry_and_revocation_are_enforced(enrolled_support_superadmin, monkeypatch):
+    client, engine, _, target_id, _, _, headers = enrolled_support_superadmin
+    grant_id = _create_and_self_approve_support_grant(client, headers, target_id, ["financial_profile"])
+    _, next_headers = _patch_support_clock(monkeypatch, enrolled_support_superadmin)
+    wrong_target = client.get(f"/admin/support-grants/{grant_id}/users/{target_id + 1}/financial-profile",
+                              headers=next_headers())
+    assert wrong_target.status_code == 404
+    out_of_scope = client.get(f"/admin/support-grants/{grant_id}/users/{target_id}/obligations",
+                              headers=next_headers())
+    assert out_of_scope.status_code == 403
+    revoked = client.post(f"/admin/support-grants/{grant_id}/revoke", headers=headers)
+    assert revoked.status_code == 200 and revoked.json()["status"] == "revoked"
+    denied = client.get(f"/admin/support-grants/{grant_id}/users/{target_id}/financial-profile",
+                        headers=next_headers())
+    assert denied.status_code == 403
+    with Session(engine) as db:
+        assert db.get(FinancialSupportGrant, grant_id).status == "revoked"
+
+
+def test_independent_superadmin_approval_keeps_access_bound_to_requester_session(enrolled_support_superadmin, monkeypatch):
+    client, engine, requester_id, target_id, _, _, requester_headers = enrolled_support_superadmin
+    created = client.post("/admin/support-grants", json={
+        "target_user_id": target_id, "support_case_reference": "CASE-2026-456",
+        "reason_code": "security_review", "scopes": ["financial_profile"],
+    }, headers=requester_headers)
+    assert created.status_code == 201, created.text
+    grant_id = created.json()["grant_id"]
+    policy = app.state.admin_settings
+    with Session(engine) as db:
+        approver = User(name="Independent Reviewer", email="second-superadmin@example.com", password_hash="hash")
+        db.add(approver)
+        db.flush()
+        approver.admin_role = "superadmin"
+        approver_secret = generate_totp_secret()
+        approver.admin_totp_nonce, approver.admin_totp_ciphertext = encrypt_totp_secret(
+            approver_secret, approver.id, policy)
+        approver.admin_totp_key_id = policy.totp_key_id
+        approver_id = approver.id
+        db.commit()
+    service = app.state.sessions
+    approver_pair = service.create(engine, approver_id, "independent-review")
+    stepup = client.post("/admin/auth/step-up", json={
+        "code": totp_code(approver_secret, int(time.time()) // 30)}, headers=bearer(approver_pair))
+    assert stepup.status_code == 200, stepup.text
+    approver_headers = {"Authorization": "Bearer " + stepup.json()["access_token"]}
+    approved = client.post(f"/admin/support-grants/{grant_id}/approve", json={}, headers=approver_headers)
+    assert approved.status_code == 200 and approved.json()["self_approved"] is False
+    _, fresh_headers = _patch_support_clock(monkeypatch, enrolled_support_superadmin)
+    profile = client.get(f"/admin/support-grants/{grant_id}/users/{target_id}/financial-profile",
+                         headers=fresh_headers())
+    assert profile.status_code == 200, profile.text
+    with Session(engine) as db:
+        grant = db.get(FinancialSupportGrant, grant_id)
+        assert grant.requester_user_id == requester_id
+        assert grant.approver_user_id == approver_id
+        assert grant.requester_session_id != approver_pair["session_id"]
+        assert grant.self_approved is False
+
+
+def test_support_grant_duplicate_totp_is_atomic_across_concurrent_reads(enrolled_support_superadmin, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    client, _, _, target_id, _, _, headers = enrolled_support_superadmin
+    grant_id = _create_and_self_approve_support_grant(client, headers, target_id, ["financial_profile"])
+    _, next_headers = _patch_support_clock(monkeypatch, enrolled_support_superadmin)
+    same_header = next_headers()
+    path = f"/admin/support-grants/{grant_id}/users/{target_id}/financial-profile"
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        responses = list(pool.map(lambda _: client.get(path, headers=same_header), range(2)))
+    assert sorted(response.status_code for response in responses) == [200, 403]
+
+
+def test_support_grant_revoke_racing_read_blocks_future_reads(enrolled_support_superadmin, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    client, _, _, target_id, _, _, headers = enrolled_support_superadmin
+    grant_id = _create_and_self_approve_support_grant(client, headers, target_id, ["financial_profile"])
+    _, next_headers = _patch_support_clock(monkeypatch, enrolled_support_superadmin)
+    read_headers = next_headers()
+    read_path = f"/admin/support-grants/{grant_id}/users/{target_id}/financial-profile"
+    revoke_path = f"/admin/support-grants/{grant_id}/revoke"
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        read_future = pool.submit(client.get, read_path, headers=read_headers)
+        revoke_future = pool.submit(client.post, revoke_path, headers=headers)
+        read_response, revoke_response = read_future.result(), revoke_future.result()
+    assert revoke_response.status_code == 200 and revoke_response.json()["status"] == "revoked"
+    assert read_response.status_code in {200, 403}
+    after = client.get(read_path, headers=next_headers())
+    assert after.status_code == 403
+
+
+def test_support_grant_expiry_and_role_change_block_reads(enrolled_support_superadmin, monkeypatch):
+    client, engine, admin_id, target_id, _, secret, headers = enrolled_support_superadmin
+    grant_id = _create_and_self_approve_support_grant(client, headers, target_id, ["financial_profile"])
+    with Session(engine) as db:
+        grant = db.get(FinancialSupportGrant, grant_id)
+        grant.expires_at = int(time.time()) - 1
+        db.commit()
+    expired = client.get(f"/admin/support-grants/{grant_id}", headers=headers)
+    assert expired.status_code == 200 and expired.json()["status"] == "expired"
+    expired_revoke = client.post(f"/admin/support-grants/{grant_id}/revoke", headers=headers)
+    assert expired_revoke.status_code == 200 and expired_revoke.json()["status"] == "expired"
+    with Session(engine) as db:
+        assert db.get(FinancialSupportGrant, grant_id).status == "expired"
+        assert db.scalar(select(AdminAuditEvent.id).where(
+            AdminAuditEvent.action == "support_grant_expired",
+            AdminAuditEvent.support_grant_id == grant_id)) is not None
+        admin = db.get(User, admin_id)
+        admin.admin_role = "admin"
+        db.commit()
+    denied = client.get(f"/admin/support-grants/{grant_id}/users/{target_id}/financial-profile",
+                        headers={**headers, "X-Admin-TOTP": totp_code(secret, int(time.time()) // 30)})
+    assert denied.status_code == 403
+
+
+def test_target_account_deletion_removes_grants_and_unlinks_audit(enrolled_support_superadmin):
+    client, engine, _, target_id, _, _, headers = enrolled_support_superadmin
+    grant_id = _create_and_self_approve_support_grant(client, headers, target_id)
+    with Session(engine) as db:
+        db.execute(text("DELETE FROM users WHERE id = :target_id"), {"target_id": target_id})
+        db.commit()
+        assert db.get(FinancialSupportGrant, grant_id) is None
+        events = db.scalars(select(AdminAuditEvent).where(AdminAuditEvent.action.like("support_%"))).all()
+        assert events
+        assert all(event.target_user_id is None and event.support_grant_id is None for event in events)
+        assert db.scalar(select(Obligation.id).where(Obligation.user_id == target_id)) is None
+        assert db.scalar(select(PaymentOccurrence.id).where(PaymentOccurrence.user_id == target_id)) is None
+
+
+def test_support_grant_input_validation_and_operational_admin_denial(enrolled_ops_admin, ops_client):
+    client, engine, admin_id, _, pair, headers = enrolled_ops_admin
+    invalid = client.post("/admin/support-grants", json={
+        "target_user_id": admin_id, "support_case_reference": "*", "reason_code": "other",
+        "scopes": ["financial_profile", "financial_profile"],
+    }, headers=headers)
+    assert invalid.status_code == 422
+    denied = client.post("/admin/support-grants", json={
+        "target_user_id": admin_id, "support_case_reference": "CASE-123", "reason_code": "account_support",
+        "scopes": ["financial_profile"],
+    }, headers=headers)
+    assert denied.status_code == 403
+    normal_client, normal_engine, normal_user_id, normal_service = ops_client
+    normal_pair = normal_service.create(normal_engine, normal_user_id, "ordinary")
+    no_admin = normal_client.get("/admin/support-grants/not-a-grant", headers=bearer(normal_pair))
+    assert no_admin.status_code == 403
+    with Session(engine) as db:
+        assert db.scalar(select(FinancialSupportGrant.id)) is None
+        assert db.scalar(select(AdminAuditEvent.id).where(
+            AdminAuditEvent.action == "support_financial_denied")) is not None
+
+
+def test_support_financial_read_database_failure_is_safe_503(enrolled_support_superadmin, monkeypatch):
+    import app.api.routes.admin_support as support_routes
+    from sqlalchemy.exc import OperationalError
+    client, _, _, target_id, _, _, headers = enrolled_support_superadmin
+    grant_id = _create_and_self_approve_support_grant(client, headers, target_id, ["financial_profile"])
+
+    def unavailable(*_args, **_kwargs):
+        raise OperationalError("SELECT private", {}, RuntimeError("private database detail"))
+
+    monkeypatch.setattr(support_routes, "select", unavailable)
+    response = client.get(f"/admin/support-grants/{grant_id}/users/{target_id}/financial-profile",
+                          headers={**headers, "X-Admin-TOTP": "000000"})
+    assert response.status_code == 503
+    assert "private database detail" not in response.text and "SELECT" not in response.text

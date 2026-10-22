@@ -1,8 +1,8 @@
 # Administrator operational APIs (Phase 2f.2)
 
 Phase 2f.2 adds read-only service operations and bounded account metadata lookup.
-It does not implement the browser dashboard, financial-record inspection, or
-support grants. Phase 2f.3 support inspection remains pending.
+Phase 2f.3 adds the separate temporary financial-support API documented in
+`docs/admin-financial-support.md`. The browser dashboard remains pending.
 
 ## Authentication and permissions
 
@@ -159,7 +159,8 @@ retention and alerts through deployment operations after privacy/legal review.
 This phase does not implement retention enforcement, alerts, production service
 provisioning, or production migration.
 
-Phase 2f.3 financial support inspection remains pending. It must use a specific
-target, reason and case reference, fixed read-only data scope, recent MFA,
-maximum 15-minute grant, pagination, no export, and enhanced auditing. A
-superadmin role alone must never permit financial-data access.
+Operational admins retain no financial-record access. Superadmins also have no
+standing financial permission; each read needs an active case-bound grant,
+request-session binding and a newly consumed TOTP code. See
+`docs/admin-financial-support.md` for endpoint contracts and remaining production
+retention, monitoring and configuration requirements.

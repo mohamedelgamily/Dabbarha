@@ -30,6 +30,16 @@ admin_bearer = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 
 def _audit_action(request: Request) -> str:
     path = request.url.path.rstrip("/")
+    if "/support-grants/" in path and "/users/" in path:
+        return "support_financial_access"
+    if path.endswith("/support-grants"):
+        return "support_grant_request"
+    if "/support-grants/" in path and path.endswith("/approve"):
+        return "support_grant_approval"
+    if "/support-grants/" in path and path.endswith("/revoke"):
+        return "support_grant_revocation"
+    if "/support-grants/" in path:
+        return "support_grant_inspection"
     if path.endswith("/ops/overview"):
         return "admin_overview"
     if path.endswith("/ops/health"):
@@ -355,3 +365,8 @@ def inspect_notification_deliveries(
     items = [_delivery_record(delivery, notification, device) for delivery, notification, device in rows[:limit]]
     return {"items": items, "after_id": after_id, "limit": limit,
             "next_cursor": items[-1]["delivery_id"] if len(rows) > limit else None}
+
+
+# Kept in a separate module so the support-access boundary stays reviewable.
+from app.api.routes.admin_support import router as support_router
+router.include_router(support_router)

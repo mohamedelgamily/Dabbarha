@@ -69,8 +69,10 @@ def audit_source(source: str | None, key: bytes) -> str | None:
 
 
 def write_audit(db, key: bytes, action: str, outcome: str, actor_id: int | None = None,
-                target_id: int | None = None, source: str | None = None) -> None:
-    db.add(AdminAuditEvent(actor_user_id=actor_id, target_user_id=target_id, action=action,
+                target_id: int | None = None, source: str | None = None,
+                support_grant_id: str | None = None) -> None:
+    db.add(AdminAuditEvent(actor_user_id=actor_id, target_user_id=target_id,
+                           support_grant_id=support_grant_id, action=action,
                            outcome=outcome, source_fingerprint=audit_source(source, key)))
 
 

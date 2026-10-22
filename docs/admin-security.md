@@ -1,16 +1,18 @@
 # Administrator security foundation (Phase 2f.1)
 
 Phase 2f.1 supplies administrator identity, TOTP step-up, offline provisioning,
-revocation and security audit records. It does not include operational metrics,
-user search, financial-data inspection, a browser dashboard, or support grants;
-those are later milestones. Admin API routes return 404 while disabled.
+revocation and security audit records. Phase 2f.2 adds operational APIs and
+bounded account metadata. Phase 2f.3 adds temporary, audited, read-only financial
+support grants as documented in `docs/admin-financial-support.md`. The browser
+dashboard remains pending. Admin API routes return 404 while disabled.
 
 ## Roles and permissions
 
 Every existing and new account has `admin_role=user`. `admin` and `superadmin`
 are assigned only with the offline command. Phase 2f.1 has no public role-change
 endpoint. `superadmin` does not itself authorize viewing anyone else's finances.
-Operational admins and the later scoped-support-grant design remain separate.
+Financial support access requires a specific approved grant and a fresh TOTP
+code for each read; operational admins cannot request or use those grants.
 
 All admin APIs require a short-lived step-up access token issued by
 `POST /admin/auth/step-up`. The caller first signs in using the existing v2 device
@@ -72,8 +74,9 @@ an authenticator. The default is false. There is no development bypass.
 IDs, a one-way source fingerprint, and timestamp. It never stores OTP values,
 JWTs, refresh tokens, passwords/hashes, TOTP seeds, raw IP addresses, email
 addresses, free-form support notes, or financial data. Phase 2f.1 writes step-up
-success/failure and offline role-provision/revocation events. Later admin actions
-must add audit records before those APIs ship.
+success/failure and offline role-provision/revocation events. Phase 2f.2/2f.3
+add operational and grant-linked events; successful financial reads never put
+financial values in audit rows.
 
 The agreed 12-month retention period is a production configuration requirement,
 not yet enforced by this phase. Production must configure retention and alerting
@@ -103,6 +106,6 @@ enablement validates the session prerequisites at startup and fails closed.
 The future browser client can use `/admin/auth/step-up` and `/admin/auth/me` as
 stable authentication endpoints. It must keep the step-up token in memory,
 request a new TOTP step-up after its short expiry, and handle 401/403/404/503
-without falling back to ordinary user privileges. Browser UI and operational
-APIs are not part of Phase 2f.1. See `frontend-admin-handoff.md` for the staged
-client requirements and the still-unimplemented 2f.2/2f.3 boundaries.
+without falling back to ordinary user privileges. Browser UI remains pending.
+See `frontend-admin-dashboard-handoff.md` for the operational and support-access
+contracts and their production requirements.

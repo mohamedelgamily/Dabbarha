@@ -76,7 +76,7 @@ def test_application_has_no_retired_imports_or_provider_requirements() -> None:
     assert set(Base.metadata.tables) == {
         'users', 'obligations', 'obligation_installments', 'auth_sessions',
         'auth_refresh_tokens', 'legacy_access_revocations',
-        'account_id_sequence', 'admin_audit_events', 'worker_heartbeats',
+        'account_id_sequence', 'admin_audit_events', 'worker_heartbeats', 'admin_financial_support_grants',
     } | phase2d_tables
     required_owners = {
         'notification_preferences': {'users.id'},
@@ -90,7 +90,12 @@ def test_application_has_no_retired_imports_or_provider_requirements() -> None:
         targets = {foreign_key.target_fullname for foreign_key in Base.metadata.tables[table_name].foreign_keys}
         assert owner_targets <= targets, f'{table_name} is missing ownership/parent foreign keys'
     audit_targets = {foreign_key.target_fullname for foreign_key in Base.metadata.tables['admin_audit_events'].foreign_keys}
-    assert audit_targets == {'users.id'}
+    assert audit_targets == {'users.id', 'admin_financial_support_grants.id'}
+    support_grant = Base.metadata.tables['admin_financial_support_grants']
+    support_targets = {foreign_key.target_fullname for foreign_key in support_grant.foreign_keys}
+    assert {'users.id', 'auth_sessions.id'} <= support_targets
+    target_fk = next(fk for fk in support_grant.foreign_keys if fk.parent.name == 'target_user_id')
+    assert target_fk.ondelete == 'CASCADE'
 
 
 @pytest.fixture

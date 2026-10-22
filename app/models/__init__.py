@@ -20,3 +20,6 @@ __all__ += ["AdminAuditEvent"]
 
 from app.models.admin_operations import WorkerHeartbeat
 __all__ += ["WorkerHeartbeat"]
+
+from app.models.admin_support import FinancialSupportGrant
+__all__ += ["FinancialSupportGrant"]
