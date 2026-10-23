@@ -246,3 +246,23 @@ def test_obligation_payability_uses_calendar_months_across_year_boundaries() -> 
     assert obligation_is_payable_in_month(obligation, date(2026, 12, 1)) is True
     assert obligation_is_payable_in_month(obligation, date(2027, 1, 1)) is True
     assert obligation_is_payable_in_month(obligation, date(2027, 2, 1)) is False
+
+
+def test_forecast_excludes_paid_legacy_occurrence_only_in_its_due_month() -> None:
+    obligation = make_obligation(start_date=date(2026, 1, 15), term_months=3)
+    obligation.paid_occurrences = {("regular", date(2026, 1, 15))}
+
+    forecast = build_forecast(
+        monthly_income=Decimal("10000.00"),
+        fixed_expenses=Decimal("2500.00"),
+        obligations=[obligation],
+        start_month=date(2026, 1, 1),
+        months=3,
+    )
+
+    assert [row.installment_payments for row in forecast] == [
+        Decimal("0.00"), Decimal("1000.00"), Decimal("1000.00"),
+    ]
+    assert [row.projected_buffer for row in forecast] == [
+        Decimal("7500.00"), Decimal("6500.00"), Decimal("6500.00"),
+    ]

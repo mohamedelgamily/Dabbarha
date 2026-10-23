@@ -1,0 +1,34 @@
+# Dabbarha v1.0 Launch Checklist
+
+Status applies to real launch readiness, not merely local test success. “Complete” means the stated artifact has been reviewed/verified; any production prerequisite is listed separately. Owners are functional roles; assign a named person before launch.
+
+| Area / item | Owner | Status | Required action | Evidence / verification | Criticality |
+|---|---|---|---|---|---|
+| Backend contracts and cross-route calculation consistency | Backend | Complete | Preserve reviewed schemas; rerun Phase 2g.1 runner after code changes | `docs/backend-integration-review.md`; focused journey regression | Blocker if regression |
+| Full backend compatibility/security suite | Backend / QA | Complete | Rerun the external suite after backend changes and review each result | External Phase 2g.1 log: 714 passed, 0 failed, 0 skipped; focused suite 66 passed; Redis/PostgreSQL and migration checks 5 passed; all 44 pins matched; `pip check` and `pip-audit` passed | Blocker if regression |
+| Mobile endpoint integration | Mobile / Jomana | Not Started | Implement flows against `docs/frontend-api-contracts.md`; no invented fields/routes | Frontend test plan and reviewed client build | Blocker |
+| Mobile localization, RTL, accessibility | Mobile / Design / QA | Not Started | Complete English/Egyptian Arabic, RTL, screen-reader, dynamic text and device checks | Localization/accessibility test reports on iOS and Android | Blocker |
+| Expo SecureStore and refresh concurrency | Mobile / Backend | Not Started | Store credentials securely; implement persisted retry key and global single-flight refresh | Network-loss and concurrent-refresh device tests | Blocker |
+| PostgreSQL target deployment | Infrastructure / DBA | Not Started | Select provider, private networking/TLS, provision, backup, performance and migration plan | Production-like infrastructure review and disposable-to-staging rehearsal | Blocker |
+| Production schema migrations | Backend / DBA | Not Started | Back up first, inspect SQL, apply controlled migrations and verify rollback/recovery on staging | Signed migration/rehearsal record; no production migration run in this phase | Blocker |
+| Shared private Redis | Infrastructure | Not Started | Provision private endpoint, auth/TLS as appropriate, persistence/failover policy; never expose port 6379 | Network scan, worker multi-instance test, outage exercise | Blocker |
+| Secrets and encryption keys | Security / Infrastructure | Not Started | Provision separate JWT, Redis HMAC, refresh-receipt, push-token and admin-TOTP keys; define rotation/recovery | Secret-manager inventory without values; restore/rotation runbook | Blocker |
+| Notification worker supervision | Infrastructure / Backend | Not Started | Run worker under monitored supervisor, define concurrency/shutdown/retry and dead-letter operations | Staging failure/recovery drill | Blocker |
+| Expo/APNs/FCM real push delivery | Mobile / Release | Not Started | Configure EAS, credentials, permissions, Android channels, delivery receipts and deep links | Real iOS/Android development-build test; backend mock tests are insufficient | Blocker |
+| Security headers, rate limits and proxy trust | Security / Infrastructure | In Progress | Verify ingress proxy identity, Redis limits, body caps, TLS/HSTS, no-store and redaction in deployed topology | External deployment configuration review and load/abuse tests | Blocker |
+| Admin identity and operational APIs | Security / Backend | In Progress | Keep admin default-off until secure sessions, TOTP provisioning, roles, monitoring and recovery are operational | Phase 2f tests/docs plus production provisioning rehearsal | Blocker if enabled |
+| Admin financial support access | Security / Privacy / Support | In Progress | Define case workflow, access review, alerting and retention; restrict grants to approved support operators | Grant/self-approval alert drill and privacy review | Blocker if enabled |
+| Admin browser dashboard | Product / Web | Not Started | Plan separate UI; preserve MFA and grant boundaries; no mobile-user access | Separate Phase 2g+ acceptance | Not required for mobile launch; required before admin UX promise |
+| Account deletion in mobile UI | Mobile / Privacy | Not Started | Add password confirmation, final confirmation, SecureStore/cache clearing and clear messaging | iOS/Android deletion test and post-delete authentication check | Blocker |
+| External deletion requests | Privacy / Support / Release | Blocked | Establish real public support/request channel, owner, identity verification and completion SLA; publish accurate URL | External page and tested support workflow | Google Play release blocker |
+| Backup retention and restore reconciliation | Infrastructure / Privacy | Not Started | Enforce approved maximum 30-day encrypted-backup retention and replay/reconcile deletions before restored service | Automated retention evidence and isolated restore drill | Blocker |
+| Privacy policy and disclosures | Privacy / Legal | Not Started | Review retention, deletion, push, support access, audit and third-party disclosures; publish actual policies | Legal sign-off and published links | Blocker |
+| Monitoring and incident response | SRE / Security | Not Started | Monitor API/database/Redis/worker health, auth failures, push outcomes, grant alerts and deletion errors; create on-call runbooks | Alert delivery tests, dashboard and incident exercise | Blocker |
+| Audit retention and alerting | Security / Privacy / SRE | Not Started | Configure approved 12-month target subject to legal review; alert on self-approved grants and unusual reads | Retention job config and alert test | Blocker if admin API enabled |
+| App Store review | Release / Product / Legal | Not Started | Validate privacy labels, account deletion, screenshots, metadata, permissions and real-device behavior | App Store submission and review result | Blocker for iOS release |
+| Google Play review | Release / Product / Legal | Not Started | Provide working external deletion request channel and accurate Data Safety/app-access disclosures | Play Console checklist and review result | Blocker for Android release |
+| Production support readiness | Product / Support / SRE | Not Started | Assign support owner, response hours, escalation, account verification, outage and deletion procedures | Published internal support runbook and rehearsed contacts | Blocker |
+
+Local SQLite/PostgreSQL/Redis integration tests do not mark production deployment, store-policy acceptance, monitoring, backup retention, provider delivery, or real-device behavior complete. Assign named owners and dates before release.
+
+Phase 2g.1 was verified on disposable local SQLite, PostgreSQL 18.6 and Redis 7.4.11 services on macOS. It did not modify the mobile frontend or verify production services, real-device push delivery, backup/restore, mobile integration or store review.

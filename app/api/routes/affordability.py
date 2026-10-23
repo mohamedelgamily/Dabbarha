@@ -7,12 +7,13 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_db
 from app.core.affordability import AffordabilityResult, ProposedCommitment, evaluate_affordability
-from app.core.forecast import month_start
+from app.core.forecast import month_start, month_window_end
 from app.core.forecast import month_index
 from app.core.installments import build_installment_schedule
 from app.models.obligation import Obligation
 from app.models.user import User
 from app.schemas.affordability import AffordabilityRequest, AffordabilityResponse
+from app.services.financial_projection import attach_paid_occurrences
 
 router = APIRouter()
 
@@ -79,6 +80,9 @@ def evaluate_commitment_affordability(
         forecast_months = month_index(last_month) - month_index(forecast_start) + 1
         if forecast_months > 1200:
             raise HTTPException(status_code=422, detail="The complete affordability period cannot exceed 1,200 months.")
+
+    end_day = month_window_end(forecast_start, forecast_months)
+    attach_paid_occurrences(db, current_user.id, existing_obligations, forecast_start, end_day)
 
     result: AffordabilityResult = evaluate_affordability(
         monthly_income=current_user.monthly_income,

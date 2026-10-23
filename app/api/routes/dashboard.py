@@ -5,10 +5,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import get_current_user, get_db
-from app.core.forecast import build_forecast, month_start
+from app.core.forecast import build_forecast, month_start, month_window_end
 from app.models.obligation import Obligation
 from app.models.user import User
 from app.schemas.dashboard import DashboardSummaryResponse
+from app.services.financial_projection import attach_paid_occurrences
 
 router = APIRouter()
 
@@ -33,6 +34,7 @@ def get_dashboard_summary(
     stmt = select(Obligation).options(selectinload(Obligation.installments)).where(Obligation.user_id == current_user.id)
     obligations = list(db.scalars(stmt).all())
     current_month = month_start(date.today())
+    attach_paid_occurrences(db, current_user.id, obligations, current_month, month_window_end(current_month, 1))
 
     forecast = build_forecast(
         monthly_income=current_user.monthly_income,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import calendar
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
@@ -88,14 +89,19 @@ def _build_month_forecast(
         if obligation.status not in PAYABLE_OBLIGATION_STATUSES:
             continue
         if getattr(obligation, "purchase_price", None) is None:
-            if obligation_is_payable_in_month(obligation, month):
+            paid_occurrences = getattr(obligation, "paid_occurrences", set())
+            already_paid = any(kind == "regular" and month_start(due_date) == month
+                               for kind, due_date in paid_occurrences)
+            if obligation_is_payable_in_month(obligation, month) and not already_paid:
                 installment_payments += obligation.monthly_installment_amount
         else:
+            paid_occurrences = getattr(obligation, "paid_occurrences", set())
             installment_payments += sum(
                 (
                     row.scheduled_amount
                     for row in getattr(obligation, "installments", ())
                     if month_start(row.due_date) == month
+                    and ("regular", row.due_date) not in paid_occurrences
                 ),
                 Decimal("0.00"),
             )
@@ -149,6 +155,14 @@ def add_months(value: date, months: int) -> date:
 
 def month_start(value: date) -> date:
     return date(value.year, value.month, 1)
+
+
+def month_window_end(start_month: date, months: int) -> date:
+    """Inclusive last day in a positive month window without year-10000 overflow."""
+    if months < 1:
+        raise ValueError("months must be greater than zero")
+    last_month = add_months(month_start(start_month), months - 1)
+    return date(last_month.year, last_month.month, calendar.monthrange(last_month.year, last_month.month)[1])
 
 
 def month_index(value: date) -> int:

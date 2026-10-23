@@ -79,3 +79,14 @@ auth redirects, localization/query providers, tab navigation and the shared
 The frontend cleanup remains a **public-release coordination blocker**. Backend
 removal is complete independently, but the currently inspected mobile worktree
 still contains the removed feature until its owner implements this handoff.
+
+
+## Phase 2g.1 consolidated mobile handoff
+
+For the full current mobile contracts and end-to-end design handoff, use
+[`frontend-api-contracts.md`](frontend-api-contracts.md) and
+[`frontend-mobile-integration-handoff.md`](frontend-mobile-integration-handoff.md).
+Those documents cover auth/session rotation, financial plans and paid occurrences,
+forecast/affordability, notifications, localization/RTL, deletion and device acceptance.
+This file remains the focused chat-removal coordination note; the browser admin
+dashboard is separate future work.

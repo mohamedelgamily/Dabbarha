@@ -5,11 +5,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import get_current_user, get_db
-from app.core.forecast import build_forecast
+from app.core.forecast import build_forecast, month_start, month_window_end
 from app.models.obligation import Obligation
 from app.models.user import User
 from app.schemas.forecast import ForecastResponse
 from app.schemas.validation import MAX_FORECAST_MONTHS, validate_calendar_window
+from app.services.financial_projection import attach_paid_occurrences
 
 router = APIRouter()
 
@@ -42,6 +43,8 @@ def get_forecast(
 
     stmt = select(Obligation).options(selectinload(Obligation.installments)).where(Obligation.user_id == current_user.id)
     obligations = list(db.scalars(stmt).all())
+    end_day = month_window_end(start_month, months)
+    attach_paid_occurrences(db, current_user.id, obligations, month_start(start_month), end_day)
 
     rows = build_forecast(
         monthly_income=current_user.monthly_income,
