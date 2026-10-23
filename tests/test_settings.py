@@ -149,3 +149,18 @@ def test_environment_variants_ignored_and_templates_preserved() -> None:
     for path in ['.env.example', '.env.production.example', 'nested/.env.example']:
         result = subprocess.run(['git', 'check-ignore', '--no-index', path], cwd=ROOT, capture_output=True)
         assert result.returncode == 1
+
+
+def test_postgres_engine_has_bounded_pool_and_health_checks() -> None:
+    from app.db.database import create_app_engine
+
+    # Engine construction does not connect to this synthetic endpoint.
+    engine = create_app_engine("postgresql+psycopg://synthetic:synthetic@127.0.0.1/dabbarha")
+    try:
+        assert engine.pool.size() == 5
+        assert engine.pool._max_overflow == 2
+        assert engine.pool._timeout == 10
+        assert engine.pool._recycle == 1800
+        assert engine.pool._pre_ping is True
+    finally:
+        engine.dispose()

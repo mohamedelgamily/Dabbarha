@@ -1,0 +1,35 @@
+[Unit]
+Description=Dabbarha FastAPI application
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=exec
+User=dabbarha-api
+Group=dabbarha-api
+SupplementaryGroups=dabbarha-limiter
+WorkingDirectory=/opt/dabbarha/backend
+# Root-owned, mode 0600, service-specific file. Do not use a shared all-secrets file.
+EnvironmentFile=/etc/dabbarha/api.env
+ExecStart=/opt/dabbarha/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 2 --proxy-headers --forwarded-allow-ips 127.0.0.1 --no-access-log
+Restart=on-failure
+RestartSec=3s
+TimeoutStopSec=30s
+KillSignal=SIGTERM
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

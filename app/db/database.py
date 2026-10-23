@@ -15,6 +15,14 @@ def create_app_engine(url: str, **kwargs: Any) -> Engine:
         # Bound cold health/admin authentication failures without overriding a
         # caller-supplied driver timeout.
         connect_args.setdefault("connect_timeout", 5)
+        # Keep aggregate connections predictable across API workers, the
+        # notification worker and one-shot migration jobs. Operators should
+        # size service process counts against the provider's connection cap.
+        kwargs.setdefault("pool_size", 5)
+        kwargs.setdefault("max_overflow", 2)
+        kwargs.setdefault("pool_timeout", 10)
+        kwargs.setdefault("pool_recycle", 1800)
+        kwargs.setdefault("pool_pre_ping", True)
     kwargs.setdefault("hide_parameters", True)
     result = create_engine(url, connect_args=connect_args, **kwargs)
     if result.dialect.name == "sqlite":
