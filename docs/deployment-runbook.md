@@ -29,6 +29,24 @@ secret scope, Expo project/credential set and deploy permissions. Staging
 accounts and records must be synthetic. Do not copy actual `.env` files into a
 platform dashboard or use production credentials in staging.
 
+Use `/etc/dabbarha/api.env` only for the API and `/etc/dabbarha/worker.env` only
+for the worker; the inactive [`deploy/worker.env.example`](../deploy/worker.env.example)
+documents the worker variables. The worker does not require `JWT_SECRET_KEY`,
+rate-limit HMAC, refresh receipt, or admin TOTP keys. Give it the push-token
+encryption key and optional Expo credential only when notifications are enabled.
+Give API, worker and Alembic release job separate PostgreSQL roles. The API
+runtime role needs reviewed application DML and account-deletion cascades, but
+no schema ownership or DDL. The worker role needs only the reads/writes for
+`users` (bounded account lock), `obligations`, `obligation_installments`,
+`notification_preferences`, `payment_occurrences`, `payment_occurrence_events`,
+`notifications`, `notification_deliveries`, `notification_devices`,
+`auth_sessions`, and `worker_heartbeats`, plus sequence use for its insert tables.
+It must not read refresh-token, admin, financial-support, or unrelated user data
+tables. Derive exact column grants from current worker queries and test the role
+against scheduling, retries, receipts, deletion locks and heartbeat writes in
+disposable PostgreSQL before deployment. Migration credentials are used only
+by the release job.
+
 Provision each secret through the chosen platform's secret manager or a root-
 controlled service credential mechanism. `.env.production.example` has blank
 secret values by design and is not an operational environment file. Never commit
@@ -113,12 +131,19 @@ with staging load measurements, leaving sufficient headroom for database
 connections, Argon2 work, Redis, and safe shutdown. Do not copy arbitrary limits
 from a development host.
 
-Use `/health` only for process liveness. It does not test PostgreSQL readiness.
-The platform must not report dependency readiness from that endpoint. Until a
-reviewed readiness probe exists, use a scheduled, authenticated synthetic
-transaction against disposable/staging accounts and the authorized admin
-operations health API where enabled. Never use financial values or secret
-credentials as probe payloads.
+Use `/health` only for process liveness. In production, `GET /ready` requires a
+PostgreSQL connection (SQLite remains valid for local development/tests), checks
+`SELECT 1`, requires
+the database `alembic_version` rows to match the packaged migration heads, and
+pings Redis when the configured limiter backend is Redis. It returns only
+`{"status":"ready"}` or a generic 503 `{"status":"unavailable"}` with
+`Retry-After`; it exposes no component names, hostnames or driver errors. It is
+not an admin API and remains undocumented in OpenAPI. Restrict probe traffic at
+the ingress where possible. DB checks use bounded engine connection/pool
+timeouts and PostgreSQL statement/lock timeouts; Redis DNS, connect and socket
+operations are bounded. Continue to use a scheduled authenticated synthetic
+transaction against disposable/staging accounts for end-to-end coverage. Never
+use financial values or secret credentials as probe payloads.
 
 Complete the smoke checklist in staging before production. In production,
 perform only non-destructive checks against a designated test account and only

@@ -12,7 +12,7 @@ or this inventory.
 
 | Secret/configuration | Used by | Required operational treatment |
 |---|---|---|
-| `JWT_SECRET_KEY` | API; currently required by common settings import in worker | Unique random high-entropy value. A change invalidates old signed access tokens. Use a coordinated, approved rotation and user/session recovery plan. Resolve the worker's unnecessary dependency before giving it this API key. |
+| `JWT_SECRET_KEY` | API only | Unique random high-entropy value. A change invalidates old signed access tokens. Use a coordinated, approved rotation and user/session recovery plan. The standalone worker and Alembic environment no longer require this key. |
 | `RATE_LIMIT_HMAC_KEY` | API processes | Separate random value, identical across all API workers in one environment. A change changes opaque limiter bucket identities and effectively resets existing quota history. |
 | `SESSION_RECEIPT_KEY` | API processes when sessions enabled | Separate 32-byte base64 key shared by API instances. The application has one active key ID; rotation can make in-window encrypted retry receipts unreadable and require sign-in for affected requests. |
 | `PUSH_TOKEN_ENCRYPTION_KEY` | API and worker when notifications enabled | Separate 32-byte base64 key, identical wherever ciphertext is read. Current code supports one active key; rotation requires a reviewed decrypt/re-encrypt operation. Do not enable push until tested. |
@@ -56,14 +56,19 @@ recovery policy and destroy them when their retention expires.
 
 ## Database and Redis permissions
 
-Create a non-login or tightly restricted migration owner and a separate runtime
-role. The runtime role must not own the schema, create roles, install
-extensions, alter tables or access unrelated databases. Grant only required
-sequence usage and table DML, including cascaded deletion behavior, and test
-account deletion, migrations, notification operations and admin audit writes
-with the actual roles in an isolated PostgreSQL environment before deployment.
-Do not assume PostgreSQL foreign-key cascades work with an untested privilege
-set. Do not grant superuser to the API or worker.
+Create a non-login or tightly restricted migration owner and separate API and
+worker runtime roles. Neither runtime role may own the schema, create roles,
+install extensions, alter tables or access unrelated databases. The API role
+gets only reviewed application table/sequence DML, including account-deletion
+cascade requirements. The worker role gets only the reads/writes needed for
+scheduling and delivery: bounded `users` row locking, obligations and
+installments, notification preferences, payment occurrences/events,
+notifications, deliveries, devices, active auth-session checks and worker
+heartbeat. Do not grant it access to refresh credentials, admin/support tables
+or arbitrary user records. Grant sequence use only where worker inserts require
+it. Test both roles, cascading deletion, migrations, notifications and admin
+audit writes in disposable PostgreSQL before deployment; do not assume cascades
+work under an untested privilege set. Do not grant superuser to API or worker.
 
 The SQLAlchemy PostgreSQL engine now caps each process at 5 pooled connections
 plus 2 overflow, with finite pool wait and pre-ping. Size provider connection
@@ -72,14 +77,11 @@ operations together. Do not raise process or pool counts without recalculating
 the aggregate cap and load testing on staging.
 
 Use separate API and worker service identities, environment scopes and
-connection credentials. The API handles all user-facing DML. The worker needs
-only the database operations required to materialize occurrences, read the
-minimal notification context, update delivery rows and heartbeat state; build
-and test an explicit table/sequence grant set before using a worker role. The
-worker currently imports common settings that require `JWT_SECRET_KEY` even
-though it does not mint JWTs. Treat this as a blocker to least-privilege secret
-separation; do not share an all-secrets environment file or assume the worker
-needs the API signing key for its function.
+connection credentials. The worker now uses `RuntimeSettings` and starts without
+importing the API JWT configuration. Keep its environment separate; when enabled
+it receives the push-token encryption key and optional Expo credential. The
+separate PostgreSQL worker role remains a deployment gate until exact grants are
+exercised against staging-equivalent disposable tests.
 
 PostgreSQL should have private network access only where the selected provider
 supports it. If a public endpoint is unavoidable, limit ingress to fixed service

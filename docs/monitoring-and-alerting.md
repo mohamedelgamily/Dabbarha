@@ -10,15 +10,23 @@ or Redis. During startup the FastAPI lifespan pings Redis and refuses to start
 when it is unavailable; a later Redis or PostgreSQL failure does not make
 `/health` change. Do not use it as a dependency-readiness result.
 
+`GET /ready` is the infrastructure dependency probe. In production it requires
+PostgreSQL (SQLite is retained for local development/tests), checks a read-only
+database query, exact current Alembic heads and Redis connectivity when Redis
+is required. It returns only a fixed `ready` body or a generic 503 `unavailable`
+body; no dependency name, hostname, credential, driver message or financial
+data is included. It is omitted from OpenAPI. Limit ingress to configured
+platform probes where feasible and never use this endpoint to display operational
+details.
+
 `GET /admin/ops/health` reports API, database, Redis, migration, notification
 worker heartbeat and non-secret configuration status, but requires the admin
 API to be enabled and a current MFA-verified administrator. Do not make it
-public or bypass MFA for a platform probe. There is no unauthenticated readiness
-route today. Until a reviewed readiness contract exists, use `/health` for
-liveness and run a separate authenticated synthetic check; the synthetic job
-must keep credentials in a secret manager, never emit them, and use a disposable
-staging account. Admin health is also useful for human operations review when
-admin is intentionally enabled.
+public or bypass MFA for a platform probe. `/health` is liveness only; a
+separate authenticated synthetic check remains necessary for end-to-end
+behavior. The synthetic job must keep credentials in a secret manager, never
+emit them, and use a disposable staging account. Admin health is useful for
+human operations review when admin is intentionally enabled.
 
 The notification worker writes account-free heartbeat rows and cycle metrics.
 Check the heartbeat age from a trusted monitor and alert on stale age rather

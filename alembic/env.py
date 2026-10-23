@@ -3,7 +3,7 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from app.core.config import DATABASE_URL
+from app.core.settings import RuntimeSettings
 from app.db.database import Base
 from app.db.migration_policy import include_object
 from app import models
@@ -13,6 +13,7 @@ config = context.config
 # percent-encoded components (for example, PostgreSQL Unix-socket paths), so
 # escape them at this boundary; Alembic's subsequent config lookup restores
 # the original URL for SQLAlchemy.
+DATABASE_URL = RuntimeSettings.from_environ().database_url
 config.set_main_option("sqlalchemy.url", DATABASE_URL.replace("%", "%%"))
 
 if config.config_file_name is not None:

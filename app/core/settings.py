@@ -68,10 +68,27 @@ def _jwt_secret(env: Mapping[str, str]) -> str:
 
 
 @dataclass(frozen=True, repr=False)
-class Settings:
-    # Do not expose credentials/database URLs through dataclass repr or validation errors.
+class RuntimeSettings:
+    """Non-authentication process settings needed by workers and migrations."""
+
     app_env: str
     database_url: str
+
+    @classmethod
+    def from_environ(cls, environ: Mapping[str, str] | None = None) -> "RuntimeSettings":
+        env = os.environ if environ is None else environ
+        mode = env.get("APP_ENV", "production").strip().lower()
+        if mode not in {"development", "test", "production"}:
+            raise ConfigurationError("APP_ENV must be development, test or production.")
+        database_url = env.get("DATABASE_URL", "sqlite:///./dabbarha.db")
+        if not database_url.strip():
+            raise ConfigurationError("DATABASE_URL cannot be empty.")
+        return cls(app_env=mode, database_url=database_url)
+
+
+@dataclass(frozen=True, repr=False)
+class Settings(RuntimeSettings):
+    # Do not expose credentials/database URLs through dataclass repr or validation errors.
     jwt_secret_key: str
     jwt_algorithm: str
     jwt_access_token_expire_minutes: int
@@ -80,21 +97,16 @@ class Settings:
     @classmethod
     def from_environ(cls, environ: Mapping[str, str] | None = None) -> "Settings":
         env = os.environ if environ is None else environ
-        mode = env.get("APP_ENV", "production").strip().lower()
-        if mode not in {"development", "test", "production"}:
-            raise ConfigurationError("APP_ENV must be development, test or production.")
+        runtime = RuntimeSettings.from_environ(env)
         secret = _jwt_secret(env)
         algorithm = env.get("JWT_ALGORITHM", "HS256")
         if algorithm != "HS256":
             raise ConfigurationError("JWT_ALGORITHM must be HS256 for this deployment contract.")
-        database_url = env.get("DATABASE_URL", "sqlite:///./dabbarha.db")
-        if not database_url.strip():
-            raise ConfigurationError("DATABASE_URL cannot be empty.")
         return cls(
-            app_env=mode,
-            database_url=database_url,
+            app_env=runtime.app_env,
+            database_url=runtime.database_url,
             jwt_secret_key=secret,
             jwt_algorithm=algorithm,
             jwt_access_token_expire_minutes=_integer(env, "JWT_ACCESS_TOKEN_EXPIRE_MINUTES", 60, 1),
-            api_docs_enabled=_boolean(env, "API_DOCS_ENABLED", mode != "production"),
+            api_docs_enabled=_boolean(env, "API_DOCS_ENABLED", runtime.app_env != "production"),
         )

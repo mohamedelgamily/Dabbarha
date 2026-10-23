@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select, text
+from sqlalchemy import event, select, text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.engine import URL
 from sqlalchemy.orm import Session
@@ -35,6 +35,7 @@ from app.models.user import User
 from app.services.sessions import SessionService
 from app.services.admin_security import encrypt_totp_secret, generate_totp_secret, totp_code
 from app.services.notification_worker import _record_worker_heartbeat
+from app.services.readiness import expected_migration_heads
 from tests.postgres_test_support import initialize_disposable_postgres
 
 
@@ -379,6 +380,85 @@ def test_database_health_failure_is_redacted(enrolled_ops_admin, monkeypatch):
     assert response.status_code == 503
     assert "private connection detail" not in response.text
     assert "secret" not in response.text
+
+
+def _set_readiness_revision(engine, revision):
+    with engine.begin() as connection:
+        connection.exec_driver_sql("DROP TABLE IF EXISTS alembic_version")
+        connection.exec_driver_sql("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)")
+        connection.execute(text("INSERT INTO alembic_version (version_num) VALUES (:revision)"),
+                           {"revision": revision})
+
+
+def test_public_readiness_is_binary_checks_schema_and_recovers(ops_client):
+    client, engine, *_ = ops_client
+    head = next(iter(expected_migration_heads()))
+    _set_readiness_revision(engine, head)
+    ready = client.get("/ready")
+    assert ready.status_code == 200 and ready.json() == {"status": "ready"}
+    assert ready.headers["cache-control"] == "no-store"
+
+    _set_readiness_revision(engine, "stale-schema-revision")
+    stale = client.get("/ready")
+    assert stale.status_code == 503 and stale.json() == {"status": "unavailable"}
+    assert stale.headers["retry-after"] == "3"
+    assert "database" not in stale.text and "redis" not in stale.text and "revision" not in stale.text
+
+    _set_readiness_revision(engine, head)
+    assert client.get("/ready").status_code == 200
+    # Liveness is intentionally distinct and remains independent of dependencies.
+    assert client.get("/health").json() == {"status": "ok"}
+
+
+def test_production_readiness_requires_postgres(ops_client, monkeypatch):
+    client, engine, *_ = ops_client
+    _set_readiness_revision(engine, next(iter(expected_migration_heads())))
+    monkeypatch.setattr(app.state, "require_postgres_readiness", True)
+    response = client.get("/ready")
+    if engine.dialect.name == "postgresql":
+        assert response.status_code == 200 and response.json() == {"status": "ready"}
+    else:
+        assert response.status_code == 503 and response.json() == {"status": "unavailable"}
+
+
+@pytest.mark.parametrize("failure", ["database", "timeout"])
+def test_readiness_database_outage_and_timeout_are_redacted(ops_client, failure):
+    client, engine, *_ = ops_client
+    _set_readiness_revision(engine, next(iter(expected_migration_heads())))
+
+    def fail_query(_connection, _cursor, statement, parameters, _context, _many):
+        if statement.strip().upper().startswith("SELECT 1"):
+            if failure == "timeout":
+                raise TimeoutError("synthetic private endpoint detail")
+            raise OperationalError(statement, parameters, RuntimeError("synthetic private endpoint detail"))
+
+    event.listen(engine, "before_cursor_execute", fail_query)
+    try:
+        failed = client.get("/ready")
+    finally:
+        event.remove(engine, "before_cursor_execute", fail_query)
+    assert failed.status_code == 503 and failed.json() == {"status": "unavailable"}
+    assert "synthetic" not in failed.text and "endpoint" not in failed.text
+    assert client.get("/health").status_code == 200
+
+
+def test_readiness_requires_redis_when_configured_and_recovers(ops_client, monkeypatch):
+    client, engine, *_ = ops_client
+    _set_readiness_revision(engine, next(iter(expected_migration_heads())))
+    runtime = app.state.security
+    runtime.settings = replace(runtime.settings, backend="redis")
+    healthy = {"value": False}
+
+    def ping():
+        if not healthy["value"]:
+            raise StoreUnavailable()
+
+    monkeypatch.setattr(runtime.limiter.store, "ping", ping)
+    unavailable_response = client.get("/ready")
+    assert unavailable_response.status_code == 503
+    assert unavailable_response.json() == {"status": "unavailable"}
+    healthy["value"] = True
+    assert client.get("/ready").json() == {"status": "ready"}
 
 
 @pytest.fixture

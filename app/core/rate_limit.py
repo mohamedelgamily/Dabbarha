@@ -7,12 +7,15 @@ import math
 import threading
 import time
 import uuid
+from urllib.parse import urlsplit
 
 from fastapi import HTTPException
 from redis import Redis
 from redis.backoff import NoBackoff
 from redis.retry import Retry
 from redis.exceptions import RedisError
+
+from app.core.private_redis import PrivateDNSSSLConnection
 
 
 class StoreUnavailable(Exception):
@@ -64,11 +67,27 @@ RELEASE_SCRIPT = "for _,key in ipairs(KEYS) do redis.call('ZREM', key, ARGV[1]) 
 
 
 class RedisStore:
-    def __init__(self, url: str, timeout: float):
-        self.client = Redis.from_url(
-            url, socket_connect_timeout=timeout, socket_timeout=timeout,
-            retry=Retry(NoBackoff(), 0), max_connections=32, protocol=2,
-        )
+    def __init__(self, url: str, timeout: float, allowed_cidrs: tuple[str, ...] = ()):
+        options = {
+            "socket_connect_timeout": timeout,
+            "socket_timeout": timeout,
+            "retry": Retry(NoBackoff(), 0),
+            "max_connections": 32,
+            "protocol": 2,
+        }
+        parsed = urlsplit(url)
+        if parsed.scheme == "rediss":
+            # Do not permit redis-py URL options to weaken TLS; URL query options
+            # are rejected by configuration validation, and secure defaults are
+            # explicit at this client boundary as well.
+            options.update(ssl_cert_reqs="required", ssl_check_hostname=True)
+        if allowed_cidrs:
+            options.update(
+                connection_class=PrivateDNSSSLConnection,
+                allowed_cidrs=allowed_cidrs,
+                dns_timeout=min(timeout, 2.0),
+            )
+        self.client = Redis.from_url(url, **options)
         self.admit_script = self.client.register_script(ADMIT_SCRIPT)
         self.release_script = self.client.register_script(RELEASE_SCRIPT)
 

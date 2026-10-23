@@ -13,7 +13,8 @@ class SecurityRuntime:
         self.settings = settings
         from app.core.session_settings import SessionSettings
         self.session_policy = SessionSettings.from_environ()
-        store = RedisStore(settings.redis_url, settings.redis_timeout) if settings.backend == "redis" else MemoryStore()
+        store = (RedisStore(settings.redis_url, settings.redis_timeout, settings.redis_allowed_cidrs)
+                 if settings.backend == "redis" else MemoryStore())
         self.limiter = Limiter(store, settings.hmac_key)
         self.argon_slots = threading.BoundedSemaphore(settings.argon_concurrency)
 

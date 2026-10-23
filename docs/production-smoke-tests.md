@@ -13,9 +13,12 @@ runner; suppress response bodies, tokens and financial values in output.
 - Confirm Swagger/OpenAPI are disabled, CORS is closed, trusted proxy peers are
   restricted, public port 6379 is unreachable, and no local SQLite database is
   being used by production.
-- Confirm `/health` responds over HTTPS. Treat it as liveness only; exercise a
-  protected route to check storage readiness. Confirm alerts receive a safe
-  synthetic event in staging before production.
+- Confirm `/health` responds over HTTPS as liveness. Check `/ready` from the
+  permitted infrastructure probe path: it should return only `ready` when
+  PostgreSQL, Alembic revision and required Redis checks pass, and generic
+  `unavailable` when any check fails. It must not expose component details.
+  Exercise a protected route for end-to-end storage/auth behavior. Confirm
+  alerts receive a safe synthetic event in staging before production.
 - Confirm API and worker each have a separate service identity and expected
   runtime permissions. Confirm admin remains disabled unless all admin gates
   have separate approval.

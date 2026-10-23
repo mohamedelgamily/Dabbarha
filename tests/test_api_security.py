@@ -23,6 +23,7 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from app.core.api_security import SecurityRuntime, source_ip
 from app.core.api_security_settings import APISecuritySettings
+from app.core.private_redis import PrivateDNSSSLConnection, resolve_allowed_private_addresses
 from app.core.rate_limit import Limiter, MemoryStore, RateLimited, RedisStore, Rule, StoreUnavailable
 from app.core.request_security import json_too_deep
 from app.core.settings import ConfigurationError
@@ -178,6 +179,101 @@ def test_private_redis_configuration_and_startup_defaults():
         assert KEY.decode() not in str(exc.value)
     assert APISecuritySettings.from_environ("development", {}).backend == "memory"
     assert APISecuritySettings.from_environ("production", base | {"RATE_LIMIT_REDIS_URL":"unix:///tmp/test.sock"}).backend == "redis"
+
+
+def test_managed_redis_requires_tls_authentication_and_narrow_private_allowlist():
+    dns_url = "rediss://limiter:synthetic-password@redis.internal.example:6380/0"
+    env = {"RATE_LIMIT_HMAC_KEY": KEY.decode(), "RATE_LIMIT_REDIS_URL": dns_url,
+           "RATE_LIMIT_REDIS_ALLOWED_CIDRS": "10.44.8.0/24"}
+    settings = APISecuritySettings.from_environ("production", env)
+    assert settings.redis_allowed_cidrs == ("10.44.8.0/24",)
+    store = RedisStore(settings.redis_url, .5, settings.redis_allowed_cidrs)
+    try:
+        connection = store.client.connection_pool.connection_class
+        assert connection is PrivateDNSSSLConnection
+        kwargs = store.client.connection_pool.connection_kwargs
+        assert kwargs["ssl_cert_reqs"] == "required"
+        assert kwargs["ssl_check_hostname"] is True
+    finally:
+        store.close()
+
+    for changes in (
+        {"RATE_LIMIT_REDIS_URL": "redis://limiter:synthetic-password@redis.internal.example:6379/0",
+         "RATE_LIMIT_REDIS_ALLOWED_CIDRS": "10.44.8.0/24"},
+        {"RATE_LIMIT_REDIS_URL": "rediss://redis.internal.example:6380/0",
+         "RATE_LIMIT_REDIS_ALLOWED_CIDRS": "10.44.8.0/24"},
+        {"RATE_LIMIT_REDIS_URL": dns_url, "RATE_LIMIT_REDIS_ALLOWED_CIDRS": ""},
+        {"RATE_LIMIT_REDIS_URL": dns_url, "RATE_LIMIT_REDIS_ALLOWED_CIDRS": "203.0.113.0/24"},
+        {"RATE_LIMIT_REDIS_URL": dns_url, "RATE_LIMIT_REDIS_ALLOWED_CIDRS": "10.0.0.0/8"},
+        {"RATE_LIMIT_REDIS_URL": dns_url + "?ssl_cert_reqs=none",
+         "RATE_LIMIT_REDIS_ALLOWED_CIDRS": "10.44.8.0/24"},
+        {"RATE_LIMIT_REDIS_URL": "rediss://limiter:synthetic-password@redis.internal.example:6380/0",
+         "RATE_LIMIT_REDIS_ALLOWED_CIDRS": "10.44.8.0/24,8.8.8.0/24"},
+        {"RATE_LIMIT_REDIS_URL": "rediss://limiter:@redis.internal.example:6380/0",
+         "RATE_LIMIT_REDIS_ALLOWED_CIDRS": "10.44.8.0/24"},
+        {"RATE_LIMIT_REDIS_URL": "rediss://limiter:synthetic-password@redis:6380/0",
+         "RATE_LIMIT_REDIS_ALLOWED_CIDRS": "10.44.8.0/24"},
+        {"RATE_LIMIT_REDIS_URL": "rediss://limiter:synthetic-password@-redis.internal.example:6380/0",
+         "RATE_LIMIT_REDIS_ALLOWED_CIDRS": "10.44.8.0/24"},
+        {"RATE_LIMIT_REDIS_URL": "rediss://limiter:synthetic-password@redis.internal.example.:6380/0",
+         "RATE_LIMIT_REDIS_ALLOWED_CIDRS": "10.44.8.0/24"},
+        {"RATE_LIMIT_REDIS_URL": "redis://192.0.0.9:6379/0"},
+        {"RATE_LIMIT_REDIS_URL": "redis://100.64.0.1:6379/0"},
+    ):
+        with pytest.raises(ConfigurationError):
+            APISecuritySettings.from_environ("production", env | changes)
+
+    with pytest.raises(ValueError):
+        PrivateDNSSSLConnection(
+            host="redis.internal.example", port=6380, password="synthetic-password",
+            ssl_cert_reqs="none", ssl_check_hostname=False,
+            allowed_cidrs=("10.44.8.0/24",), dns_timeout=.5,
+        )
+
+
+def test_private_dns_answers_are_checked_on_every_connection(monkeypatch):
+    import app.core.private_redis as private_redis
+
+    answers = [["10.44.8.12", ""], ["203.0.113.12", ""]]
+    calls = [0]
+
+    class Resolver:
+        def __init__(self, configure=True):
+            pass
+
+        def resolve(self, host, record_type, *, lifetime, search):
+            assert host == "redis.internal.example" and lifetime > 0 and search is False
+            values = answers[calls[0]][0 if record_type == "A" else 1]
+            if record_type == "AAAA":
+                calls[0] += 1
+            return [type("Record", (), {"address": value}) for value in ([values] if values else [])]
+
+    monkeypatch.setattr(private_redis.dns.resolver, "Resolver", Resolver)
+    cidrs = ("10.44.8.0/24",)
+    assert str(resolve_allowed_private_addresses("redis.internal.example", cidrs, .5)[0]) == "10.44.8.12"
+    with pytest.raises(OSError):
+        resolve_allowed_private_addresses("redis.internal.example", cidrs, .5)
+    assert calls[0] == 2
+
+
+def test_managed_redis_public_dns_answer_fails_closed_without_network(monkeypatch):
+    import app.core.private_redis as private_redis
+
+    class Resolver:
+        def __init__(self, configure=True):
+            pass
+
+        def resolve(self, host, record_type, *, lifetime, search):
+            return [type("Record", (), {"address": "8.8.8.8" if record_type == "A" else ""})] if record_type == "A" else []
+
+    monkeypatch.setattr(private_redis.dns.resolver, "Resolver", Resolver)
+    store = RedisStore("rediss://limiter:synthetic-password@redis.internal.example:6380/0", .5,
+                       ("10.44.8.0/24",))
+    try:
+        with pytest.raises(StoreUnavailable):
+            store.ping()
+    finally:
+        store.close()
 
 
 @pytest.mark.parametrize("name,value", [("RATE_LIMIT_READS","0"),("RATE_LIMIT_WRITES","-1"),("RATE_LIMIT_LOGIN","no"),

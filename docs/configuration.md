@@ -22,6 +22,20 @@ of automatic loading. Settings are a startup snapshot; restart to apply changes.
 Never run production with `--reload` or trust a development template as deployment
 configuration.
 
+## Separate notification-worker environment
+
+The standalone worker loads only `APP_ENV`, `DATABASE_URL`, and notification
+settings through `RuntimeSettings`; it starts without importing API JWT settings.
+Use the inactive [`deploy/worker.env.example`](../deploy/worker.env.example) as
+the worker-only variable inventory. Keep `JWT_SECRET_KEY`, `RATE_LIMIT_HMAC_KEY`,
+`SESSION_RECEIPT_KEY`, and `ADMIN_TOTP_ENCRYPTION_KEY` in the API environment
+only. The worker receives `PUSH_TOKEN_ENCRYPTION_KEY` only when notifications
+are enabled, and the optional Expo credential only when provider authentication
+is configured. It still needs a separate database credential with narrowly
+granted worker table/sequence access; that role has not been provisioned or
+tested against staging. Alembic release jobs use runtime database settings and
+a separate migration credential, not the API JWT key.
+
 ## Local development
 
 1. Create an ignored `.env.local` from `.env.example` and restrict access to its

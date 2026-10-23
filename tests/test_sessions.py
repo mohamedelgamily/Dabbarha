@@ -3,9 +3,9 @@ import base64
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import date, datetime, timedelta, timezone
+import os
 from decimal import Decimal
 import json
-import os
 from pathlib import Path
 import subprocess
 import tempfile
@@ -457,11 +457,12 @@ def test_additive_migration_and_downgrade_only_disposable_db(session_db):
     from alembic import command
     from unittest.mock import patch
     from sqlalchemy import inspect
-    import app.core.config as config
     Base.metadata.drop_all(session_db)
     cfg=Config("alembic.ini")
     url=session_db.url.render_as_string(hide_password=False)
-    with patch.object(config,"DATABASE_URL",url):
+    # Migrations now intentionally use runtime-only settings (no JWT key).
+    # Patch the same environment boundary used by Alembic for this disposable DB.
+    with patch.dict(os.environ, {"DATABASE_URL": url}):
         command.upgrade(cfg,"2d1a00000001")
         assert {"auth_sessions","auth_refresh_tokens","legacy_access_revocations"} <= set(inspect(session_db).get_table_names())
         assert {"notification_preferences", "notification_devices", "payment_occurrences",

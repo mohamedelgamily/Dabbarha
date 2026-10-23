@@ -3,7 +3,7 @@ from typing import Any
 from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
-from app.core.config import DATABASE_URL
+from app.core.settings import RuntimeSettings
 
 
 def create_app_engine(url: str, **kwargs: Any) -> Engine:
@@ -46,7 +46,7 @@ def create_app_engine(url: str, **kwargs: Any) -> Engine:
     return result
 
 
-engine = create_app_engine(DATABASE_URL)
+engine = create_app_engine(RuntimeSettings.from_environ().database_url)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 

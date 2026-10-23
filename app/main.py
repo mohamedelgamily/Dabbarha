@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from starlette.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
@@ -14,6 +14,8 @@ from app.core.session_settings import SessionSettings
 from app.core.admin_settings import AdminSettings
 from app.core.notification_settings import NotificationSettings
 from app.services.sessions import SessionService
+from app.services.readiness import probe_readiness
+from app.api.deps import get_db
 from app.core.request_security import RequestSecurityMiddleware
 
 from app.api.routes.affordability import router as affordability_router
@@ -49,6 +51,7 @@ app = FastAPI(
 )
 
 app.state.security = SecurityRuntime(APISecuritySettings.from_environ(SETTINGS.app_env))
+app.state.require_postgres_readiness = SETTINGS.app_env == "production"
 app.state.sessions = SessionService(SessionSettings.from_environ())
 app.state.admin_settings = AdminSettings.from_environ()
 app.state.notification_settings = NotificationSettings.from_environ(SETTINGS.app_env)
@@ -96,3 +99,13 @@ app.include_router(affordability_router, prefix="/affordability", tags=["afforda
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/ready", include_in_schema=False)
+def readiness(request: Request, db=Depends(get_db)):
+    """Binary dependency readiness only; operational detail stays behind admin MFA."""
+    if probe_readiness(db, request.app.state.security,
+                       require_postgres=request.app.state.require_postgres_readiness):
+        return {"status": "ready"}
+    return JSONResponse(status_code=503, content={"status": "unavailable"},
+                        headers={"Retry-After": "3"})

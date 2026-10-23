@@ -7,6 +7,7 @@ import secrets
 from typing import Mapping
 from urllib.parse import urlsplit
 
+from app.core.private_redis import is_dns_hostname, is_private_network_address, parse_private_cidrs
 from app.core.settings import ConfigurationError, _jwt_secret
 
 
@@ -14,6 +15,7 @@ from app.core.settings import ConfigurationError, _jwt_secret
 class APISecuritySettings:
     backend: str = "memory"
     redis_url: str = ""
+    redis_allowed_cidrs: tuple[str, ...] = ()
     hmac_key: bytes = field(default_factory=lambda: secrets.token_bytes(48))
     login_limit: int = 5
     login_ip_limit: int = 30
@@ -49,6 +51,7 @@ class APISecuritySettings:
             if key == env.get("JWT_SECRET_KEY"):
                 raise ConfigurationError("RATE_LIMIT_HMAC_KEY must be separate from JWT_SECRET_KEY.")
         url = env.get("RATE_LIMIT_REDIS_URL", "")
+        allowed_cidrs: tuple[str, ...] = ()
         if backend == "redis":
             try:
                 parsed = urlsplit(url)
@@ -57,18 +60,39 @@ class APISecuritySettings:
                     valid = valid and not parsed.netloc and parsed.path.startswith("/") and len(parsed.path) > 1
                 else:
                     host = parsed.hostname
-                    address = ipaddress.ip_address(host) if host != "localhost" else None
-                    valid = valid and parsed.scheme in {"redis", "rediss"} and (
-                        host == "localhost" or (
-                            address is not None and (address.is_loopback or (address.is_private
-                            and not address.is_unspecified and not address.is_multicast and not address.is_reserved))
-                        )
-                    ) and (parsed.port is None or 1 <= parsed.port <= 65535)
+                    port = parsed.port
+                    valid = valid and parsed.scheme in {"redis", "rediss"} and host is not None
+                    if valid and host == "localhost":
+                        pass  # Existing single-host compatibility; ingress remains an operator network control.
+                    elif valid:
+                        try:
+                            address = ipaddress.ip_address(host)
+                        except ValueError:
+                            if not is_dns_hostname(host) or parsed.scheme != "rediss" or not parsed.password:
+                                valid = False
+                            else:
+                                allowed_cidrs = parse_private_cidrs(env.get("RATE_LIMIT_REDIS_ALLOWED_CIDRS", ""))
+                        else:
+                            mapped_or_scoped = isinstance(address, ipaddress.IPv6Address) and (
+                                address.ipv4_mapped is not None or address.scope_id is not None
+                            )
+                            valid = not mapped_or_scoped and (
+                                address.is_loopback or (
+                                    is_private_network_address(address)
+                                    and not address.is_unspecified
+                                    and not address.is_multicast
+                                    and not address.is_reserved
+                                    and not address.is_link_local
+                                )
+                            )
+                    valid = valid and (port is None or 1 <= port <= 65535)
                     valid = valid and (not parsed.path or parsed.path[1:].isdigit())
                 if not valid:
                     raise ValueError()
             except (ValueError, TypeError):
-                raise ConfigurationError("RATE_LIMIT_REDIS_URL must use a private literal IP/localhost or an absolute unix socket, without query options.") from None
+                raise ConfigurationError(
+                    "RATE_LIMIT_REDIS_URL must use a private IP/localhost, a Unix socket, or authenticated rediss DNS with a private CIDR allowlist; query options are not accepted."
+                ) from None
         integers = {
             "login_limit": ("RATE_LIMIT_LOGIN", 5, 100000),
             "login_ip_limit": ("RATE_LIMIT_LOGIN_IP", 30, 100000),
@@ -107,5 +131,5 @@ class APISecuritySettings:
             except (ValueError, TypeError):
                 raise ConfigurationError(f"{name} must be finite, positive and at most {maximum} seconds.") from None
             values[field_name] = value
-        return cls(backend=backend, redis_url=url,
+        return cls(backend=backend, redis_url=url, redis_allowed_cidrs=allowed_cidrs,
                    hmac_key=key.encode() if key else secrets.token_bytes(48), **values)

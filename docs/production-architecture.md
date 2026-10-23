@@ -44,8 +44,8 @@ RPO, budget and data-residency decision.
 
 | Option | Fit | Trade-offs and required checks |
 |---|---|---|
-| Render | One platform offers web services, background workers, PostgreSQL, Redis-compatible Key Value, same-region private networking, environment-scoped secrets, and managed TLS. This is the simplest operations model for the current two-process backend. | Verify database/Key Value plan cost, backup recovery window, region, eviction policy, support and secret/environment permissions before purchase. Render private connections use service hostnames. **The current backend rejects DNS hostnames in `RATE_LIMIT_REDIS_URL`**, so its Key Value URL cannot be used until an approved application change safely supports the provider's private hostname, or a reviewed private proxy supplies an allowed endpoint. Do not work around this with a public endpoint. [Private networking](https://render.com/docs/private-network), [background workers](https://render.com/docs/background-workers), [PostgreSQL backups](https://render.com/docs/postgresql-backups), [TLS](https://render.com/docs/tls). |
-| DigitalOcean App Platform + Managed PostgreSQL + Managed Valkey | App Platform can connect to VPC resources; Managed PostgreSQL and Valkey provide managed datastore operations, private-network controls and Redis-client compatibility. | Requires VPC and trusted-source configuration across the app and datastores. Managed endpoints use DNS; the same `RATE_LIMIT_REDIS_URL` hostname restriction blocks direct Valkey use until resolved. Current published starting prices are approximately USD 15.15/month for the smallest PostgreSQL node and USD 15/month for Valkey, before App Platform compute, storage, backups, taxes or higher availability; recheck the live quote. [App Platform VPC](https://docs.digitalocean.com/products/app-platform/how-to/enable-vpc/), [PostgreSQL](https://www.digitalocean.com/products/managed-databases-postgresql), [Valkey](https://www.digitalocean.com/products/managed-databases-valkey), [database pricing](https://www.digitalocean.com/pricing/managed-databases). |
+| Render | One platform offers web services, background workers, PostgreSQL, Redis-compatible Key Value, same-region private networking, environment-scoped secrets, and managed TLS. This is the simplest operations model for the current two-process backend. | Verify database/Key Value plan cost, backup recovery window, region, eviction policy, support and secret/environment permissions before purchase. Render private connections use service hostnames. The backend now supports authenticated `rediss://` DNS endpoints with a narrow `RATE_LIMIT_REDIS_ALLOWED_CIDRS` allowlist, address validation on each connection, and TLS certificate/hostname verification. Provider VPC rules, egress controls, actual hostname answers and certificate behavior still require staging proof. Do not work around a failure with a public endpoint. [Private networking](https://render.com/docs/private-network), [background workers](https://render.com/docs/background-workers), [PostgreSQL backups](https://render.com/docs/postgresql-backups), [TLS](https://render.com/docs/tls). |
+| DigitalOcean App Platform + Managed PostgreSQL + Managed Valkey | App Platform can connect to VPC resources; Managed PostgreSQL and Valkey provide managed datastore operations, private-network controls and Redis-client compatibility. | Requires VPC and trusted-source configuration across the app and datastores. Managed endpoints use DNS; the backend now supports authenticated TLS DNS endpoints restricted to explicit private CIDRs. Verify actual provider DNS answers, certificate names, egress and trusted-source behavior in staging. Current published starting prices are approximately USD 15.15/month for the smallest PostgreSQL node and USD 15/month for Valkey, before App Platform compute, storage, backups, taxes or higher availability; recheck the live quote. [App Platform VPC](https://docs.digitalocean.com/products/app-platform/how-to/enable-vpc/), [PostgreSQL](https://www.digitalocean.com/products/managed-databases-postgresql), [Valkey](https://www.digitalocean.com/products/managed-databases-valkey), [database pricing](https://www.digitalocean.com/pricing/managed-databases). |
 
 Prices and features change. These are candidates, not procurement advice. Select a
 provider only after testing private connectivity, PostgreSQL TLS verification,
@@ -55,20 +55,22 @@ Do not select a hosting provider from an example file.
 
 ## Compatibility gates found in the repository
 
-- The application requires production Redis and validates `RATE_LIMIT_REDIS_URL`
-  as an absolute Unix socket or private literal IP/localhost. Arbitrary DNS
-  names are intentionally rejected. Managed private datastores commonly expose
-  DNS hostnames, so direct managed Redis/Valkey integration is currently blocked.
-  The safe follow-up is an explicitly approved design for trusted private DNS
-  endpoints with TLS/hostname verification and endpoint restrictions, plus
-  tests for public-host rejection and DNS changes. Never weaken this by trusting
-  user-controlled forwarding or a public Redis URL.
+- The application requires production Redis and accepts an absolute Unix socket,
+  private literal IP/localhost, or authenticated `rediss://` private-DNS endpoint
+  with an explicit narrow RFC1918/ULA CIDR allowlist. New connections resolve A
+  and AAAA with a deadline, reject any address outside that list, connect to the
+  validated IP, and verify both the TLS certificate and requested hostname. DNS
+  syntax alone does not prove private routing: firewall Redis to the app network,
+  enforce egress restrictions, use the provider's private endpoint, and verify
+  actual DNS answers/TLS identity from staging. Unapproved DNS changes fail
+  closed. No provider endpoint or real private network was tested in this phase.
 - `GET /health` is process liveness only. The API lifespan fails startup if
   Redis cannot be reached, but it does not check PostgreSQL at startup and
   `/health` remains 200 during later dependency failure. `/admin/ops/health`
   gives richer data only when the admin surface is enabled and a verified admin
-  session is supplied. There is no unauthenticated dependency-readiness route;
-  deployment probes must not mistake `/health` for readiness.
+  session is supplied. `GET /ready` is a separate undocumented, binary-only
+  dependency probe. Restrict it to infrastructure checks at the edge where
+  possible; it does not expose component status or bypass admin authorization.
 - Database URLs accept PostgreSQL through the configured SQLAlchemy driver and
   the connection timeout is bounded. Configure the provider's CA and
   `sslmode=verify-full` (or its documented equivalent), private endpoint and
@@ -81,12 +83,13 @@ Do not select a hosting provider from an example file.
   database tier. Do not disable certificate checks to resolve a connectivity
   issue.
 - The notification worker is a distinct executable and does not start with the
-  API. It requires its own process supervision and production notification
-  configuration. Current shared settings import also requires `JWT_SECRET_KEY`
-  in the worker environment even though the worker does not issue access
-  tokens. Treat this as an unnecessary key exposure to resolve before production
-  secret scoping; do not give the worker the API signing key by copying a shared
-  all-secrets file without review.
+  API. It now imports only non-authentication runtime settings and starts without
+  `JWT_SECRET_KEY`; API authentication still requires that key. Keep worker and
+  API environment files separate. The worker still needs a separately provisioned
+  database role restricted to its schedule, occurrence, notification, device,
+  session, user-row-lock and heartbeat operations, plus push-token encryption and
+  optional Expo secrets when enabled. Its grants remain unprovisioned and
+  unvalidated.
 - `/admin/*` is default-off and requires the documented durable-session, role,
   TOTP and audit controls. Keep it disabled until provisioning, monitoring,
   alerting, audit retention and access review are operational. The browser admin
