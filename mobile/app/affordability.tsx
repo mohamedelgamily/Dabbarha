@@ -1,5 +1,5 @@
-import { t, classificationLabel, monthCount } from '@/i18n';
-import React, { useState } from 'react';
+import { t, classificationLabel, monthCount, translateMessage } from '@/i18n';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   StyleSheet,
@@ -9,9 +9,11 @@ import {
 import { useRouter } from 'expo-router';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
+import { affordabilitySchema, purchasePlanRequest, currentAffordabilityResult, type AffordabilityFormData } from '@/schemas/affordability';
+import { Segmented } from '@/components/common/Segmented';
 import { useMutation } from '@tanstack/react-query';
 import { affordabilityApi } from '@/api/affordability';
+import { inSession } from '@/api/session';
 import {
   AffordabilityResponse,
 } from '@/types/affordability';
@@ -26,32 +28,12 @@ import { ErrorBanner } from '@/components/common/ErrorBanner';
 import { colors, spacing, borderRadius } from '@/constants/theme';
 import { formatCurrency, formatMonthLabel, formatPercent, getTodayDateString } from '@/utils/format';
 
-const affordabilitySchema = z.object({
-  amount: z
-    .string()
-    .min(1, 'Amount is required')
-    .refine((val) => !isNaN(Number(val)) && Number(val) > 0, {
-      message: 'Amount must be greater than 0',
-    }),
-  start_date: z
-    .string()
-    .min(1, 'Start date is required')
-    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format'),
-  term_months: z
-    .string()
-    .min(1, 'Term is required')
-    .refine((val) => !isNaN(Number(val)) && Number(val) > 0, {
-      message: 'Term must be greater than 0',
-    }),
-});
-
-type AffordabilityFormData = z.infer<typeof affordabilitySchema>;
-
 const TERM_PRESETS = ['3', '6', '12', '24'];
 
 export default function AffordabilityScreen() {
   const router = useRouter();
-  const { user } = useAuthStore();
+  const { user, sessionId, isAuthenticated } = useAuthStore();
+  const submitting = useRef(false);
   const currency = user?.currency || 'EGP';
   const [apiError, setApiError] = useState<string | null>(null);
 
@@ -64,44 +46,65 @@ export default function AffordabilityScreen() {
     handleSubmit,
     setValue,
     watch,
+    setError,
     formState: { errors },
   } = useForm<AffordabilityFormData>({
     resolver: zodResolver(affordabilitySchema),
     defaultValues: {
-      amount: '',
+      purchase_price: '',
+      payment_method: 'automatic',
+      interest_method: 'none',
+      nominal_annual_interest_rate: '',
+      monthly_installment_amount: '',
+      due_day_of_month: '1',
+      down_payment_amount: '',
+      down_payment_date: '',
+      down_payment_paid: false,
       start_date: getTodayDateString(),
       term_months: '12',
     },
   });
 
-  const watchedAmount = watch('amount');
-  const watchedTerm = watch('term_months');
-  const numericAmount = Number(watchedAmount || 0);
-  const numericTerm = Number(watchedTerm || 0);
-  const estimatedMonthly =
-    numericAmount > 0 && numericTerm > 0
-      ? Math.round((numericAmount / numericTerm) * 100) / 100
-      : 0;
+  const values = watch();
+  const watchedTerm = values.term_months;
 
   const mutation = useMutation<
     AffordabilityResponse,
     { statusCode: number; message: string; detail?: string | ApiErrorDetail[] },
     AffordabilityFormData
   >({
-    mutationFn: async (data) => {
-      return affordabilityApi.evaluateAffordability(data);
-    },
+    mutationFn: inSession(sessionId, async (data: AffordabilityFormData) => {
+      return affordabilityApi.evaluateAffordability(purchasePlanRequest(data));
+    }),
+    onSettled: () => { submitting.current = false; },
     onError: (err) => {
+      if (Array.isArray(err.detail)) {
+        for (const issue of err.detail) {
+          const field = issue.loc?.[issue.loc.length - 1];
+          if (typeof field === 'string' && field in values) setError(field as keyof AffordabilityFormData, { type: 'server', message: issue.msg });
+        }
+      }
       setApiError(err?.message || t("Failed to evaluate affordability analysis."));
     },
   });
 
   const onSubmit = (data: AffordabilityFormData) => {
+    if (submitting.current || !isAuthenticated) return;
+    submitting.current = true;
     setApiError(null);
     mutation.mutate(data);
   };
 
-  const result = mutation.data;
+  // A verdict belongs to submitted inputs and the financial profile at that time.
+  useEffect(() => { mutation.reset(); setApiError(null); }, [user]);
+  const result = currentAffordabilityResult(mutation.data, mutation.variables, values, mutation.isPending, mutation.isError);
+  const planInput = (name: 'monthly_installment_amount' | 'nominal_annual_interest_rate' | 'due_day_of_month' | 'down_payment_amount' | 'down_payment_date', label: string, date = false) => (
+    <Controller control={control} name={name} render={({ field: { onChange, onBlur, value } }) => (
+      <Input label={label} value={value} onChangeText={(text) => { setApiError(null); onChange(text); }} onBlur={onBlur}
+        dateInput={date} keyboardType={date ? 'default' : name === 'due_day_of_month' ? 'number-pad' : 'decimal-pad'}
+        placeholder={date ? 'YYYY-MM-DD' : '0'} error={errors[name]?.message} editable={!mutation.isPending} />
+    )} />
+  );
 
   const getVerdictStyle = (classification: string) => {
     switch (classification) {
@@ -209,10 +212,10 @@ export default function AffordabilityScreen() {
         <View style={styles.formCard}>
           <Controller
             control={control}
-            name="amount"
+            name="purchase_price"
             render={({ field: { onChange, onBlur, value } }) => (
               <Input
-                label={t("Commitment / Purchase Total *")}
+                label={t("Purchase price *")}
                 placeholder="0.00"
                 keyboardType="decimal-pad"
                 value={value}
@@ -221,15 +224,43 @@ export default function AffordabilityScreen() {
                   onChange(text);
                 }}
                 onBlur={onBlur}
-                error={errors.amount?.message}
-                helperText={
-                  estimatedMonthly > 0
-                    ? t('Estimated monthly outflow: {amount}/mo', { amount: formatCurrency(estimatedMonthly, currency) })
-                    : undefined
-                }
+                error={errors.purchase_price?.message}
+                editable={!mutation.isPending}
+                helperText={t("See your payment plan after you evaluate.")}
               />
             )}
           />
+
+          <Typography variant="label">{t("How should we set your monthly payment?")}</Typography>
+          <Segmented value={values.payment_method} onChange={(value) => setValue('payment_method', value)} options={[
+            { value: 'automatic', label: t('Calculate for me'), disabled: mutation.isPending },
+            { value: 'manual', label: t('I know my payment'), disabled: mutation.isPending },
+          ]} />
+          {values.payment_method === 'manual' ? <>
+            {planInput('monthly_installment_amount', t('Provider monthly payment *'))}
+            <Typography variant="caption">{t('Enter the exact monthly payment your provider quoted, including any interest.')}</Typography>
+          </> : <>
+            <Typography variant="label">{t('Interest type')}</Typography>
+            <Segmented value={values.interest_method} onChange={(value) => setValue('interest_method', value)} options={[
+              { value: 'none', label: t('No interest'), disabled: mutation.isPending },
+              { value: 'flat', label: t('On original amount'), disabled: mutation.isPending },
+              { value: 'reducing_balance', label: t('On remaining amount'), disabled: mutation.isPending },
+            ]} />
+            {values.interest_method !== 'none' && <>
+              {planInput('nominal_annual_interest_rate', t('Yearly interest rate (%) *'))}
+              <Typography variant="caption">{t('Use the yearly rate quoted by your provider. This is not APR and does not include extra fees.')}</Typography>
+            </>}
+          </>}
+          {planInput('due_day_of_month', t('Due Day (1–31)'))}
+          {planInput('down_payment_amount', t('Down payment (optional)'))}
+          {Number(values.down_payment_amount) > 0 && <>
+            {planInput('down_payment_date', t('Down payment date *'), true)}
+            <Typography variant="label">{t('Have you already paid the down payment?')}</Typography>
+            <Segmented value={values.down_payment_paid ? 'paid' : 'unpaid'} onChange={(value) => setValue('down_payment_paid', value === 'paid')} options={[
+              { value: 'unpaid', label: t('Not yet'), disabled: mutation.isPending },
+              { value: 'paid', label: t('Already paid'), disabled: mutation.isPending },
+            ]} />
+          </>}
 
           {/* Quick Term Presets */}
           <View style={styles.presetSection}>
@@ -243,6 +274,7 @@ export default function AffordabilityScreen() {
                     key={term}
                     activeOpacity={0.7}
                     onPress={() => setValue('term_months', term)}
+                    disabled={mutation.isPending} accessibilityRole="button" accessibilityState={{ selected: isSelected, disabled: mutation.isPending }}
                     style={[
                       styles.presetChip,
                       isSelected && styles.presetChipSelected,
@@ -278,7 +310,7 @@ export default function AffordabilityScreen() {
                       onChange(text);
                     }}
                     onBlur={onBlur}
-                    error={errors.term_months?.message}
+                    error={errors.term_months?.message} editable={!mutation.isPending}
                   />
                 )}
               />
@@ -298,7 +330,7 @@ export default function AffordabilityScreen() {
                       onChange(text);
                     }}
                     onBlur={onBlur}
-                    error={errors.start_date?.message}
+                    error={errors.start_date?.message} editable={!mutation.isPending}
                   />
                 )}
               />
@@ -313,8 +345,9 @@ export default function AffordabilityScreen() {
           />
         </View>
 
+        {result && result.monthly_results.length === 0 && <Typography>{t('No payment results were returned. Please try again.')}</Typography>}
         {/* Verdict & Impact Breakdown */}
-        {result && verdictStyle && (
+        {result && result.monthly_results.length > 0 && verdictStyle && (
           <View style={styles.resultSection}>
             <View style={styles.resultHeadingRow}>
               <Typography style={styles.resultSectionHeading}>
@@ -363,7 +396,7 @@ export default function AffordabilityScreen() {
               </View>
 
               <Typography direction="auto" style={styles.verdictExplanation}>
-                {result.explanation}
+                {translateMessage(result.explanation)}
               </Typography>
 
               <View style={styles.verdictDivider} />
@@ -420,7 +453,8 @@ export default function AffordabilityScreen() {
 
                       <View style={styles.breakdownSub}>
                         <Typography style={styles.breakdownPayment}>
-                          {t("Installment:")} {formatCurrency(m.proposed_commitment_amount, currency)}
+                          {t("Installment:")} {formatCurrency(m.proposed_installment_amount, currency)}
+                          {Number(m.proposed_down_payment_amount) > 0 && <Typography>{'\n'}{t("Down payment:")} {formatCurrency(m.proposed_down_payment_amount, currency)}</Typography>}
                         </Typography>
                         <Typography
                           style={[

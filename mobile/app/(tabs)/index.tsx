@@ -60,7 +60,7 @@ function toNum(v: string | number | null | undefined): number {
 interface QuickActionItem {
   title: string;
   icon: IconName;
-  route: '/forecast' | '/affordability' | '/(tabs)/obligations' | '/chat';
+  route: '/forecast' | '/affordability' | '/(tabs)/obligations';
 }
 
 // Decorative artwork stays behind the content and never captures touches.
@@ -98,7 +98,7 @@ function FlowBackdrop() {
 
 export default function DashboardScreen() {
   const router = useRouter();
-  const { user } = useAuthStore();
+  const { user, sessionId, isAuthenticated } = useAuthStore();
   const currency = user?.currency || 'EGP';
   const firstName = getFirstName(user?.name);
   const userInitial = user?.name ? user.name.trim().charAt(0).toUpperCase() : 'D';
@@ -111,7 +111,8 @@ export default function DashboardScreen() {
     refetch,
     isRefetching,
   } = useQuery<DashboardSummaryResponse, { statusCode: number; message: string; detail?: string | ApiErrorDetail[] }>({
-    queryKey: ['dashboard-summary'],
+    queryKey: ['dashboard-summary', sessionId, user?.id],
+    enabled: isAuthenticated,
     queryFn: dashboardApi.getDashboardSummary,
   });
 
@@ -166,7 +167,6 @@ export default function DashboardScreen() {
     { title: t("Cashflow\nForecast"), icon: 'trending-up', route: '/forecast' },
     { title: t("Affordability\nTest"), icon: 'pie-chart', route: '/affordability' },
     { title: t("Obligations\nLedger"), icon: 'credit-card', route: '/(tabs)/obligations' },
-    { title: t("Ask\nDabbarha"), icon: 'message-circle', route: '/chat' },
   ];
   const metrics: { label: string; icon: IconName; value: string }[] = [
     { label: t("Income"), icon: 'arrow-up', value: hasProfile ? formatCurrency(income, currency) : t("Not set") },

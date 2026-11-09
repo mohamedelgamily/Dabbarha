@@ -10,13 +10,23 @@ export interface AffordabilityMonthResult {
   fixed_expenses: string;
   existing_obligation_payments: string;
   proposed_commitment_amount: string;
+  proposed_installment_amount: string;
+  proposed_down_payment_amount: string;
   projected_buffer: string;
 }
 
 export interface AffordabilityRequest {
-  amount: string;
+  purchase_price: string;
+  payment_method: 'manual' | 'automatic';
+  interest_method: 'none' | 'flat' | 'reducing_balance';
+  nominal_annual_interest_rate?: string;
+  monthly_installment_amount?: string;
   start_date: string;
-  term_months: string;
+  term_months: number;
+  due_day_of_month: number;
+  down_payment_amount: string;
+  down_payment_date?: string;
+  down_payment_paid: boolean;
 }
 
 export interface AffordabilityResponse {

@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { obligationsApi } from '@/api/obligations';
+import { inSession } from '@/api/session';
 import { ObligationResponse } from '@/types/obligation';
 import { useAuthStore } from '@/store/authStore';
 import { ScreenWrapper } from '@/components/common/ScreenWrapper';
@@ -69,7 +70,7 @@ function CommitmentIllustration() {
 export default function ObligationsScreen() {
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState<(typeof filters)[number]>('All');
-  const { user } = useAuthStore();
+  const { user, sessionId, isAuthenticated } = useAuthStore();
   const currency = user?.currency || 'EGP';
 
   const [selectedObligation, setSelectedObligation] =
@@ -86,12 +87,13 @@ export default function ObligationsScreen() {
     refetch,
     isRefetching,
   } = useQuery({
-    queryKey: ['obligations'],
+    queryKey: ['obligations', sessionId, user?.id],
+    enabled: isAuthenticated,
     queryFn: obligationsApi.getObligations,
   });
 
   const deleteMutation = useMutation({
-    mutationFn: obligationsApi.deleteObligation,
+    mutationFn: inSession(sessionId, obligationsApi.deleteObligation),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['obligations'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });

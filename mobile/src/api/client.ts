@@ -1,6 +1,6 @@
 import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import { API_BASE_URL, config } from '@/constants/config';
-import { getToken } from '@/utils/storage';
+import { assertSession, invalidateSession, sessionSnapshot } from './session';
 import { ApiErrorResponse } from '@/types/api';
 
 export const apiClient: AxiosInstance = axios.create({
@@ -12,28 +12,38 @@ export const apiClient: AxiosInstance = axios.create({
   },
 });
 
-// Request interceptor: attach Bearer token if present
+type SessionRequest = InternalAxiosRequestConfig & { sessionGeneration?: number; privateRequest?: boolean };
+
 apiClient.interceptors.request.use(
-  async (requestConfig: InternalAxiosRequestConfig) => {
-    try {
-      const token = await getToken();
-      if (token && requestConfig.headers) {
-        requestConfig.headers.Authorization = `Bearer ${token}`;
-      }
-    } catch {
-      // Continue request without token if secure store fails
+  (requestConfig: SessionRequest) => {
+    const session = sessionSnapshot();
+    requestConfig.sessionGeneration = session.generation;
+    requestConfig.privateRequest = !['/auth/login', '/auth/register'].includes(requestConfig.url || '');
+    requestConfig.signal = session.signal;
+    if (requestConfig.privateRequest) {
+      if (!session.token) throw new axios.CanceledError('No authenticated session');
+      requestConfig.headers.Authorization = `Bearer ${session.token}`;
     }
     return requestConfig;
   },
-  (error) => {
-    return Promise.reject(error);
-  }
+  (error) => { throw error; },
+  { synchronous: true },
 );
+
+function checkResponseSession(request?: SessionRequest) {
+  if (request?.sessionGeneration !== undefined) assertSession(request.sessionGeneration);
+}
 
 // Response interceptor: standard error extraction
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => { checkResponseSession(response.config); return response; },
   (error: AxiosError<ApiErrorResponse>) => {
+    const request = error.config as SessionRequest | undefined;
+    checkResponseSession(request);
+    if (axios.isCancel(error)) return Promise.reject(error);
+    if (error.response?.status === 401 && request?.privateRequest && request.sessionGeneration !== undefined) {
+      invalidateSession(request.sessionGeneration);
+    }
     if (error.response) {
       // Server responded with an error status code
       const errorData = error.response.data;

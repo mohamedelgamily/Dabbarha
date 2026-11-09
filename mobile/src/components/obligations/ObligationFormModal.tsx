@@ -18,6 +18,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { obligationSchema, ObligationFormData } from '@/schemas/obligation';
 import { obligationsApi } from '@/api/obligations';
+import { inSession } from '@/api/session';
 import {
   ObligationResponse,
   ObligationStatus,
@@ -68,6 +69,7 @@ export function ObligationFormModal({
   onSuccess,
 }: ObligationFormModalProps) {
   const queryClient = useQueryClient();
+  const sessionId = useAuthStore(state => state.sessionId);
   const [apiError, setApiError] = useState<string | null>(null);
 
   const isEditing = !!initialData;
@@ -102,7 +104,7 @@ export function ObligationFormModal({
   }, [visible, initialData, reset]);
 
   const mutation = useMutation({
-    mutationFn: async (data: ObligationFormData) => {
+    mutationFn: inSession(sessionId, async (data: ObligationFormData) => {
       if (isEditing && initialData) {
         const updatePayload: ObligationUpdate = {
           provider: data.provider.trim(),
@@ -131,7 +133,7 @@ export function ObligationFormModal({
         };
         return await obligationsApi.createObligation(createPayload);
       }
-    },
+    }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['obligations'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });

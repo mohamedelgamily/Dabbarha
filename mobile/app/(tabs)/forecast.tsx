@@ -25,7 +25,7 @@ import { formatCurrency, formatMonthLabel, getCurrentMonthStartDate } from '@/ut
 
 export default function ForecastScreen() {
   const router = useRouter();
-  const { user } = useAuthStore();
+  const { user, sessionId, isAuthenticated } = useAuthStore();
   const currency = user?.currency || 'EGP';
 
   const startMonth = getCurrentMonthStartDate();
@@ -44,7 +44,8 @@ export default function ForecastScreen() {
     ForecastResponse,
     { statusCode: number; message: string; detail?: string | ApiErrorDetail[] }
   >({
-    queryKey: ['forecast', startMonth, months],
+    queryKey: ['forecast', sessionId, user?.id, startMonth, months],
+    enabled: isAuthenticated,
     queryFn: () => forecastApi.getForecast({ start_month: startMonth, months }),
   });
 
