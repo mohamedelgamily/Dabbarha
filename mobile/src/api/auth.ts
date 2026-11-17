@@ -9,12 +9,12 @@ export interface UserUpdate {
 
 export const authApi = {
   async register(data: UserCreate): Promise<UserResponse> {
-    const response = await apiClient.post<UserResponse>('/auth/register', data);
+    const response = await apiClient.post<UserResponse>('/auth/register', data, { authMode: 'none' });
     return response.data;
   },
 
   async login(credentials: UserLogin): Promise<Token> {
-    const response = await apiClient.post<Token>('/auth/login', credentials);
+    const response = await apiClient.post<Token>('/auth/login', credentials, { authMode: 'none' });
     return response.data;
   },
 

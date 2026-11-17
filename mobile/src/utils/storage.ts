@@ -2,7 +2,8 @@ import * as SecureStore from 'expo-secure-store';
 import { config } from '@/constants/config';
 import { UserResponse } from '@/types/auth';
 
-const logoutMarkerKey = `${config.tokenStorageKey}_logout_pending`;
+export const logoutMarkerKey = `${config.tokenStorageKey}_logout_pending`;
+export const v2SessionStorageKey = 'dabbarha_session_v2';
 export const STORAGE_RECOVERY_MESSAGE = 'Saved sign-in could not be cleared. Try signing in again to retry cleanup. If this continues, clear the app data before using a shared device.';
 export const STORAGE_UNSAFE_MESSAGE = 'Saved sign-in could not be cleared or blocked from restoration. Clear the app data before reopening it on a shared device, or try signing in again to retry cleanup.';
 export class AuthStorageCleanupError extends Error {}
@@ -72,14 +73,19 @@ export async function clearAuthStorage(): Promise<void> {
     // Still attempt deletion when storage cannot persist the logout intent.
   }
   // Wait for both deletions even if one fails, before a later session may write.
-  const results = await Promise.allSettled([deleteToken(), deleteUser()]);
+  const results = await Promise.allSettled([deleteToken(), deleteUser(), SecureStore.deleteItemAsync(v2SessionStorageKey)]);
   const failed = results.find((result) => result.status === 'rejected');
   if (failed) {
     if (!blocked) {
       try {
         // Independent fallback if writing the marker failed but replacement works.
-        await SecureStore.setItemAsync(config.tokenStorageKey, '');
-        blocked = true;
+        const replacements = await Promise.allSettled([
+          SecureStore.setItemAsync(config.tokenStorageKey, ''),
+          SecureStore.setItemAsync(v2SessionStorageKey, ''),
+        ]);
+        // Each credential must either have been deleted or replaced successfully.
+        blocked = (results[0].status === 'fulfilled' || replacements[0].status === 'fulfilled') &&
+          (results[2].status === 'fulfilled' || replacements[1].status === 'fulfilled');
       } catch { /* No durable guarantee is possible if all writes fail. */ }
     }
     throw new AuthStorageCleanupError(blocked ? STORAGE_RECOVERY_MESSAGE : STORAGE_UNSAFE_MESSAGE);

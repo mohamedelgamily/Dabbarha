@@ -4,11 +4,15 @@ import { Stack } from 'expo-router';
 import { QueryProvider } from '@/providers/QueryProvider';
 import { useAuthStore } from '@/store/authStore';
 import { LoadingIndicator } from '@/components/common/LoadingIndicator';
+import { ScreenWrapper } from '@/components/common/ScreenWrapper';
+import { ErrorBanner } from '@/components/common/ErrorBanner';
+import { Button } from '@/components/common/Button';
 import { colors } from '@/constants/theme';
 import { LocalizationProvider } from '@/providers/LocalizationProvider';
 
 function RootNavigationLayout() {
-  const { isAuthenticated, isInitialized, initializeAuth, sessionId } = useAuthStore();
+  const { isAuthenticated, isInitialized, initializeAuth, sessionId,
+    restorationRetryable, dismissRestoration, error } = useAuthStore();
 
   useEffect(() => {
     initializeAuth();
@@ -16,6 +20,16 @@ function RootNavigationLayout() {
 
   if (!isInitialized) {
     return <LoadingIndicator message={t("Loading Dabbarha...")} color={colors.primary} />;
+  }
+
+  if (restorationRetryable) {
+    return (
+      <ScreenWrapper>
+        <ErrorBanner message={error} />
+        <Button title={t("Retry")} onPress={initializeAuth} />
+        <Button title={t("Sign In")} onPress={dismissRestoration} />
+      </ScreenWrapper>
+    );
   }
 
   return (

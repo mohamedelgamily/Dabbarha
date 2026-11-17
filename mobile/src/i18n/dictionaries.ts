@@ -1,5 +1,16 @@
 // English source phrases are stable translation keys. Never pass user content to t().
 export const ar = {
+  'You are signed out on this device, but server session revocation was not confirmed.': 'تم تسجيل خروجك على الجهاز ده، لكن مش قدرنا نأكد إلغاء جلسة الدخول على السيرفر.',
+  'Saved sign-in could not be cleared. Try signing in again to retry cleanup. If this continues, clear the app data before using a shared device. You are signed out on this device, but server session revocation was not confirmed.': 'مش قادرين نمسح بيانات الدخول المحفوظة. جرّب تسجّل الدخول تاني عشان نعيد محاولة مسحها. لو المشكلة مستمرة، امسح بيانات التطبيق قبل استخدام جهاز مشترك. تم تسجيل خروجك على الجهاز ده، لكن مش قدرنا نأكد إلغاء جلسة الدخول على السيرفر.',
+  'Saved sign-in could not be cleared or blocked from restoration. Clear the app data before reopening it on a shared device, or try signing in again to retry cleanup. You are signed out on this device, but server session revocation was not confirmed.': 'مش قادرين نمسح بيانات الدخول المحفوظة أو نمنع استرجاعها. امسح بيانات التطبيق قبل فتحه تاني على جهاز مشترك، أو جرّب تسجّل الدخول تاني عشان نعيد محاولة المسح. تم تسجيل خروجك على الجهاز ده، لكن مش قدرنا نأكد إلغاء جلسة الدخول على السيرفر.',
+  'We could not restore your sign-in. Retry when your connection or device storage is available, or sign in again.': 'مش قادرين نسترجع جلسة الدخول. جرّب تاني لما الاتصال أو تخزين الجهاز يبقى متاح، أو سجّل الدخول من جديد.',
+  'Your session could not be renewed. Please try again.': 'مش قادرين نجدد جلسة الدخول. جرّب تاني.',
+  'Your session was renewed. Review the action before trying again.': 'جددنا جلسة الدخول. راجع العملية قبل ما تحاول تاني.',
+  'Could not securely save your sign-in. Please try again.': 'مش قادرين نحفظ بيانات الدخول بأمان. جرّب تاني.',
+  "Password must be at least 8 characters": "كلمة السر لازم تكون 8 حروف أو رموز على الأقل",
+  "Password cannot exceed 128 characters": "كلمة السر لازم ما تزيدش عن 128 حرف أو رمز",
+  "Password must contain non-whitespace text": "كلمة السر لازم تحتوي على حروف أو رموز، مش مسافات بس",
+  "Password must contain valid Unicode": "كلمة السر فيها رمز غير صالح. اكتبها تاني",
   "The total scheduled payments exceed the supported amount range.": "إجمالي الأقساط أكبر من الحد الأقصى للمبلغ اللي التطبيق بيدعمه.",
   "This rate and term do not produce a supported amortizing schedule.": "نسبة الفايدة والمدة دي مش بيطلعوا جدول أقساط مدعوم يسدد المبلغ المموّل تدريجيًا.",
   "The total plan payments exceed the supported amount range.": "إجمالي دفعات الخطة، شامل المقدم، أكبر من الحد الأقصى للمبلغ اللي التطبيق بيدعمه.",
