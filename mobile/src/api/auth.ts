@@ -1,4 +1,5 @@
 import { apiClient } from './client';
+import { validMoney, monetaryText } from '@/utils/financialValidation';
 import { Token, UserCreate, UserLogin, UserResponse } from '@/types/auth';
 
 export interface UserUpdate {
@@ -24,6 +25,14 @@ export const authApi = {
   },
 
   async updateMe(data: UserUpdate): Promise<UserResponse> {
+    data = { ...data };
+    for (const field of ['monthly_income', 'fixed_expenses'] as const) {
+      const value = data[field];
+      if (value !== undefined) {
+        if (!validMoney(value)) throw new Error('Enter an amount from zero to 9,999,999,999.99, with at most two decimal places.');
+        data[field] = typeof value === 'string' ? monetaryText(value) : value;
+      }
+    }
     const response = await apiClient.patch<UserResponse>('/auth/me', data);
     return response.data;
   },

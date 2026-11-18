@@ -1,4 +1,5 @@
 import { t } from '@/i18n';
+import { validMoney, monetaryText } from '@/utils/financialValidation';
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -47,10 +48,10 @@ export default function ProfileScreen() {
     }
   }, [user]);
 
-  const incomeError = monthlyIncome.trim() !== '' && (!Number.isFinite(Number(monthlyIncome)) || Number(monthlyIncome) < 0)
-    ? t("Enter a valid amount of zero or more.") : undefined;
-  const expensesError = fixedExpenses.trim() !== '' && (!Number.isFinite(Number(fixedExpenses)) || Number(fixedExpenses) < 0)
-    ? t("Enter a valid amount of zero or more.") : undefined;
+  const incomeError = monthlyIncome.trim() !== '' && !validMoney(monthlyIncome)
+    ? t("Enter an amount from zero to 9,999,999,999.99, with at most two decimal places.") : undefined;
+  const expensesError = fixedExpenses.trim() !== '' && !validMoney(fixedExpenses)
+    ? t("Enter an amount from zero to 9,999,999,999.99, with at most two decimal places.") : undefined;
   const handleSave = async () => {
     if (isSaving || incomeError || expensesError) return;
     setSaveError(null);
@@ -59,9 +60,9 @@ export default function ProfileScreen() {
     try {
       await updateProfile({
         monthly_income:
-          monthlyIncome.trim() === '' ? undefined : Number(monthlyIncome),
+          monthlyIncome.trim() === '' ? undefined : monetaryText(monthlyIncome),
         fixed_expenses:
-          fixedExpenses.trim() === '' ? undefined : Number(fixedExpenses),
+          fixedExpenses.trim() === '' ? undefined : monetaryText(fixedExpenses),
       });
       setSaveSuccess(true);
       setIsEditing(false);

@@ -495,12 +495,12 @@ test('obligation monetary schema rejects non-finite input and preserves ordinary
   const base = { provider: 'Synthetic', item_name: 'Synthetic', category: 'Electronics', total_amount: '12000',
     monthly_installment_amount: '1000', start_date: '2026-11-01', term_months: '12', due_day_of_month: '1', status: 'active' };
   for (const field of ['total_amount', 'monthly_installment_amount']) {
-    for (const value of ['Infinity', '-Infinity', 'NaN', '1e309', '-1e309', '  Infinity  ', 'invalid']) {
+    for (const value of ['Infinity', '-Infinity', 'NaN', '1e309', '-1e309', '  Infinity  ', 'invalid', '1.234', '1e3', '0x10', '10000000000']) {
       const result = obligationSchema.safeParse({ ...base, [field]: value });
       assert.equal(result.success, false, `${field}: ${value}`);
       assert.ok(result.error.issues.some(issue => issue.path[0] === field));
     }
-    for (const value of ['0', '0.01', '12000', '1250.50', ' 250.75 ', '1.234', '1e3']) {
+    for (const value of ['0', '0.01', '12000', '1250.50', ' 250.75 ']) {
       const parsed = obligationSchema.parse({ ...base, [field]: value });
       assert.ok(Number.isFinite(Number(parsed[field])));
       assert.notEqual(JSON.parse(JSON.stringify({ amount: Number(parsed[field]) })).amount, null);
@@ -1618,4 +1618,71 @@ test('Affordability screen locks duplicate submissions and maps backend field er
   options.onError({ statusCode: 422, message: 'Invalid value', detail: [{ loc: ['body', 'purchase_price'], msg: 'Invalid value' }] });
   assert.equal(fields[0][0], 'purchase_price');
   options.onSettled(); submit.props.onPress(); assert.equal(calls, 2);
+});
+
+
+test('F3 calendar and installment boundaries are checked by schema and transport', async () => {
+  const h = harness(); await h.login('A'); let calls = 0;
+  h.setHandler(async config => { calls++; return h.success(config, { id: 1 }); });
+  const api = h.load('src/api/obligations.ts').obligationsApi;
+  const schema = h.load('src/schemas/obligation.ts').obligationSchema;
+  const base = { provider: 'Test', item_name: 'Test', category: 'Other', total_amount: '0', monthly_installment_amount: '0', start_date: '2026-01-01', term_months: '1', due_day_of_month: '1', status: 'active' };
+  for (const [field, values] of Object.entries({
+    start_date: ['2026-02-31', '0000-00-00', '0000-01-01', '2026-02-29', '1900-02-29', '2026-04-31', '2026-13-01'],
+    term_months: ['0', '-1', '1.5', 'Infinity', 'NaN', '1e309', '9007199254740992', '9.007199254740992e15', '1201', '0x10'],
+  })) for (const value of values) {
+    assert.equal(schema.safeParse({ ...base, [field]: value }).success, false, value);
+    await assert.rejects(api.createObligation({ ...base, [field]: value }));
+    await assert.rejects(api.updateObligation(1, { [field]: value }));
+  }
+  for (const value of [Infinity, NaN, 1.5, 9007199254740992, 1201]) await assert.rejects(api.updateObligation(1, { term_months: value }));
+  assert.equal(calls, 0);
+  for (const date of ['2000-02-29', '2024-02-29', '0001-01-01', '9999-12-01']) {
+    assert.equal(schema.safeParse({ ...base, start_date: date }).success, true);
+    await api.createObligation({ ...base, term_months: 1, start_date: date });
+  }
+  assert.equal(schema.safeParse({ ...base, term_months: '1200' }).success, true);
+  assert.equal(schema.safeParse({ ...base, start_date: '9999-12-01', term_months: '2' }).success, false);
+  await assert.rejects(api.updateObligation(1, { start_date: '9999-12-01', term_months: 2 }));
+  await api.updateObligation(1, { term_months: 1200 }); await h.clearSession();
+});
+
+test('F4 currency rules reject unintended formats before profile and obligation transport', async () => {
+  const h = harness(); await h.login('A'); let calls = 0; const sent = [];
+  h.setHandler(async config => { calls++; sent.push(JSON.parse(config.data)); return h.success(config, { id: 1 }); });
+  const api = h.load('src/api/obligations.ts').obligationsApi;
+  const profile = h.load('src/api/auth.ts').authApi;
+  const { validMoney } = h.load('src/utils/financialValidation.ts');
+  for (const value of ['Infinity', '-Infinity', 'NaN', '1e309', '0x10', '0b10', '0o10', '1e3', '1.234', '-1', '', '9999999999.991', '10000000000', '+1', '1,000', Infinity, NaN, null, true]) {
+    assert.equal(validMoney(value), false, String(value));
+    for (const field of ['total_amount', 'monthly_installment_amount']) await assert.rejects(api.updateObligation(1, { [field]: value }));
+    for (const field of ['monthly_income', 'fixed_expenses']) await assert.rejects(profile.updateMe({ [field]: value }));
+  }
+  assert.equal(calls, 0);
+  for (const value of ['0', '0.01', '1234.50', '9999999999.99', '\u0661\u0662\u0663\u0664\u066b\u0665\u0660', '\u06f1\u06f2\u06f3\u06f4\u066b\u06f5\u06f0']) {
+    assert.equal(validMoney(value), true, value);
+    await profile.updateMe({ monthly_income: value, fixed_expenses: value });
+    await api.updateObligation(1, { total_amount: value });
+  }
+  assert.equal(validMoney('0', true), false); assert.equal(validMoney('0.01', true), true);
+  assert.equal(sent.at(-1).total_amount, '1234.50');
+  await profile.updateMe({ currency: 'EGP' }); assert.deepEqual(sent.at(-1), { currency: 'EGP' });
+  await h.clearSession();
+});
+
+
+test('F4 affordability keeps positive prices and manual payments, optional zero down payments, and decimal-only amounts', () => {
+  const load = loader(); const { purchasePlanRequest } = load('src/schemas/affordability.ts');
+  for (const value of ['0x10', '0b10', '1e3', '1.234', 'Infinity', '1e309', '10000000000']) {
+    assert.throws(() => purchasePlanRequest({ ...form, purchase_price: value }));
+    assert.throws(() => purchasePlanRequest({ ...form, payment_method: 'manual', monthly_installment_amount: value }));
+    assert.throws(() => purchasePlanRequest({ ...form, down_payment_amount: value }));
+  }
+  assert.throws(() => purchasePlanRequest({ ...form, payment_method: 'manual', monthly_installment_amount: '0' }));
+  assert.equal(purchasePlanRequest({ ...form, down_payment_amount: '' }).down_payment_amount, '0');
+  assert.equal(purchasePlanRequest({ ...form, purchase_price: '9999999999.99' }).purchase_price, '9999999999.99');
+  const { setTranslationLanguage, translateMessage } = load('src/i18n/index.ts');
+  const message = 'Enter an amount from zero to 9,999,999,999.99, with at most two decimal places.';
+  assert.equal(translateMessage(message), message);
+  setTranslationLanguage('ar'); assert.match(translateMessage(message), /[\u0600-\u06ff]/);
 });

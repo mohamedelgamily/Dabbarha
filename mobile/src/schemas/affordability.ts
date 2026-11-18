@@ -1,19 +1,10 @@
 import { z } from 'zod';
+import { validMoney as money, validDate } from '@/utils/financialValidation';
 import { normalizeNumericInput } from '@/i18n';
 import type { AffordabilityRequest } from '@/types/affordability';
 
 const numeric = z.string().transform(value => normalizeNumericInput(value).trim());
-function validDate(value: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const [year, month, day] = value.split('-').map(Number);
-  if (year < 1 || month < 1 || month > 12 || day < 1) return false;
-  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
-  return day <= [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
-}
 function monthIndex(value: string) { const [y, m] = value.split('-').map(Number); return y * 12 + m - 1; }
-function money(value: string, positive = false) {
-  return /^\d+(\.\d{1,2})?$/.test(value) && Number(value) <= 9999999999.99 && (positive ? Number(value) > 0 : Number(value) >= 0);
-}
 export const affordabilitySchema = z.object({
   purchase_price: numeric,
   payment_method: z.enum(['automatic', 'manual']),
