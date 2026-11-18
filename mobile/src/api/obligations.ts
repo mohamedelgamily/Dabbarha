@@ -5,6 +5,13 @@ import {
   ObligationUpdate,
 } from '@/types/obligation';
 
+function assertFiniteAmount(value: unknown, message: string): void {
+  if ((typeof value !== 'number' && typeof value !== 'string') ||
+    (typeof value === 'string' && !value.trim()) || !Number.isFinite(Number(value))) {
+    throw new Error(message);
+  }
+}
+
 export const obligationsApi = {
   /**
    * List all obligations belonging to the authenticated user
@@ -26,6 +33,9 @@ export const obligationsApi = {
    * Create a new financial obligation
    */
   async createObligation(data: ObligationCreate): Promise<ObligationResponse> {
+    // Validate before Axios can turn non-finite numbers into JSON null.
+    assertFiniteAmount(data.total_amount, 'Total amount must be a non-negative number');
+    assertFiniteAmount(data.monthly_installment_amount, 'Monthly installment must be a non-negative number');
     const response = await apiClient.post<ObligationResponse>('/obligations', data);
     return response.data;
   },
@@ -37,6 +47,8 @@ export const obligationsApi = {
     id: number,
     data: ObligationUpdate
   ): Promise<ObligationResponse> {
+    if (data.total_amount !== undefined) assertFiniteAmount(data.total_amount, 'Total amount must be a non-negative number');
+    if (data.monthly_installment_amount !== undefined) assertFiniteAmount(data.monthly_installment_amount, 'Monthly installment must be a non-negative number');
     const response = await apiClient.put<ObligationResponse>(
       `/obligations/${id}`,
       data

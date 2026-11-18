@@ -417,6 +417,121 @@ test('token replacement prevents restoration when logout marker cannot be writte
   assert.equal(calls, 0); assert.equal(restarted.store.getState().isAuthenticated, false);
 });
 
+for (const mode of ['success', 'cache-failure', 'api-failure']) test(`financial profile PATCH: ${mode} preserves authoritative state and invalidation`, async () => {
+  const faults = {}; const h = harness(new Map(), faults); await h.login('A');
+  const id = h.session.sessionSnapshot().generation;
+  const before = h.store.getState().user;
+  const updated = { ...before, monthly_income: '9000', fixed_expenses: '2000' };
+  for (const name of ['dashboard-summary', 'forecast']) {
+    h.query.setQueryDefaults([name], { gcTime: Infinity });
+    h.query.setQueryData([name, id, before.id], { previous: true });
+    h.query.setQueryData([name, id + 1, 2], { otherGeneration: true });
+  }
+  let calls = 0;
+  h.setHandler(async config => {
+    assert.equal(config.url, '/auth/me'); assert.equal(config.method, 'patch'); calls++;
+    if (mode === 'api-failure') throw h.failure(config, 503, 'Profile temporarily unavailable');
+    return h.success(config, updated);
+  });
+  faults.rejectWrite = key => mode === 'cache-failure' && key === 'user';
+  if (mode === 'api-failure') {
+    await assert.rejects(h.store.getState().updateProfile({ monthly_income: '9000' }), e => e.statusCode === 503);
+    assert.deepEqual(plain(h.store.getState().user), plain(before));
+    assert.equal(h.store.getState().error, 'Profile temporarily unavailable');
+  } else {
+    const result = await h.store.getState().updateProfile({ monthly_income: '9000' });
+    assert.deepEqual(plain(result), updated); assert.deepEqual(plain(h.store.getState().user), updated);
+    assert.equal(h.store.getState().error, null);
+    if (mode === 'success') assert.deepEqual(JSON.parse(h.data.get('user')), updated);
+    else assert.equal(h.data.has('user'), false);
+  }
+  assert.equal(calls, 1); assert.equal(h.store.getState().isLoading, false);
+  assert.equal(h.store.getState().isAuthenticated, true);
+  for (const name of ['dashboard-summary', 'forecast']) {
+    assert.equal(h.query.getQueryState([name, id, before.id]).isInvalidated, mode !== 'api-failure');
+    assert.equal(h.query.getQueryState([name, id + 1, 2]).isInvalidated, false);
+  }
+  await h.clearSession();
+});
+
+test('profile publishes before optional cache write; logout and B login cannot receive its late completion', async () => {
+  const faults = {}; const h = harness(new Map(), faults); await h.login('A');
+  const updated = { ...h.store.getState().user, monthly_income: '9000' };
+  const gate = deferred(), entered = deferred();
+  faults.beforeWrite = async key => { if (key === 'user') { entered.resolve(); await gate.promise; } };
+  h.setHandler(async config => config.method === 'patch' ? h.success(config, updated)
+    : config.url === '/auth/sessions' ? h.success(config, loginPair('B'))
+    : h.success(config, { ...updated, id: 2, monthly_income: '3000' }));
+  const pending = h.store.getState().updateProfile({ monthly_income: '9000' }).catch(e => e);
+  await entered.promise;
+  assert.equal(h.store.getState().user.monthly_income, '9000');
+  const cleanup = h.clearSession(); gate.resolve(); await cleanup;
+  assert.equal((await pending).code, 'ERR_CANCELED');
+  faults.beforeWrite = undefined; await h.login('B');
+  assert.equal(h.store.getState().user.id, 2); assert.equal(h.store.getState().user.monthly_income, '3000');
+  assert.equal(h.data.has('user'), false); await h.clearSession();
+});
+
+test('late profile PATCH from A cannot publish or invalidate B financial state', async () => {
+  const h = harness(); await h.login('A'); const gate = deferred(), entered = deferred();
+  const oldUser = h.store.getState().user;
+  h.setHandler(async config => {
+    if (config.method === 'patch') { entered.resolve(); await gate.promise; return h.success(config, { ...oldUser, monthly_income: '9000' }); }
+    if (config.url === '/auth/sessions') return h.success(config, loginPair('B'));
+    return h.success(config, { ...oldUser, id: 2, monthly_income: '3000' });
+  });
+  const pending = h.store.getState().updateProfile({ monthly_income: '9000' }).catch(e => e);
+  await entered.promise; await h.clearSession(); await h.login('B');
+  const key = ['dashboard-summary', h.session.sessionSnapshot().generation, 2];
+  h.query.setQueryDefaults(['dashboard-summary'], { gcTime: Infinity }); h.query.setQueryData(key, { owner: 2 });
+  gate.resolve(); assert.equal((await pending).code, 'ERR_CANCELED');
+  assert.equal(h.store.getState().user.id, 2); assert.equal(h.query.getQueryState(key).isInvalidated, false);
+  await h.clearSession();
+});
+
+test('obligation monetary schema rejects non-finite input and preserves ordinary and normalized amounts', () => {
+  const load = loader(); const { obligationSchema } = load('src/schemas/obligation.ts');
+  const { normalizeNumericInput } = load('src/i18n/index.ts');
+  const base = { provider: 'Synthetic', item_name: 'Synthetic', category: 'Electronics', total_amount: '12000',
+    monthly_installment_amount: '1000', start_date: '2026-11-01', term_months: '12', due_day_of_month: '1', status: 'active' };
+  for (const field of ['total_amount', 'monthly_installment_amount']) {
+    for (const value of ['Infinity', '-Infinity', 'NaN', '1e309', '-1e309', '  Infinity  ', 'invalid']) {
+      const result = obligationSchema.safeParse({ ...base, [field]: value });
+      assert.equal(result.success, false, `${field}: ${value}`);
+      assert.ok(result.error.issues.some(issue => issue.path[0] === field));
+    }
+    for (const value of ['0', '0.01', '12000', '1250.50', ' 250.75 ', '1.234', '1e3']) {
+      const parsed = obligationSchema.parse({ ...base, [field]: value });
+      assert.ok(Number.isFinite(Number(parsed[field])));
+      assert.notEqual(JSON.parse(JSON.stringify({ amount: Number(parsed[field]) })).amount, null);
+    }
+    for (const input of ['\u0661\u0662\u0663\u0664\u066b\u0665\u0660', '\u06f1\u06f2\u06f3\u06f4\u066b\u06f5\u06f0']) {
+      assert.equal(obligationSchema.parse({ ...base, [field]: normalizeNumericInput(input) })[field], '1234.50');
+    }
+  }
+});
+
+test('obligation create/update reject non-finite monetary payloads before transport', async () => {
+  const h = harness(); await h.login('A'); const api = h.load('src/api/obligations.ts').obligationsApi;
+  let calls = 0; const payloads = [];
+  h.setHandler(async config => { calls++; payloads.push(JSON.parse(config.data)); return h.success(config, { id: 1 }); });
+  const base = { provider: 'Synthetic', item_name: 'Synthetic', category: 'Electronics', total_amount: 12000,
+    monthly_installment_amount: 1000, start_date: '2026-11-01', term_months: 12, due_day_of_month: 1 };
+  for (const field of ['total_amount', 'monthly_installment_amount']) {
+    for (const value of [Infinity, -Infinity, NaN, 'Infinity', '-Infinity', 'NaN', '1e309', null]) {
+      await assert.rejects(api.createObligation({ ...base, [field]: value }));
+      await assert.rejects(api.updateObligation(1, { [field]: value }));
+    }
+  }
+  assert.equal(calls, 0);
+  await api.createObligation({ ...base, total_amount: 0, monthly_installment_amount: '12.50' });
+  await api.updateObligation(1, { total_amount: '1250.75' });
+  await api.updateObligation(1, { status: 'completed' });
+  assert.equal(calls, 3); assert.equal(payloads[0].total_amount, 0);
+  assert.equal(payloads[0].monthly_installment_amount, '12.50'); assert.equal(payloads[1].total_amount, '1250.75');
+  assert.deepEqual(payloads[2], { status: 'completed' }); await h.clearSession();
+});
+
 function loginPair(name = 'A') {
   const now = Math.floor(Date.now() / 1000);
   return { access_token: name, token_type: 'bearer', expires_in: 900,

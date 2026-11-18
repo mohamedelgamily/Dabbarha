@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   Alert,
 } from 'react-native';
-import { useQueryClient } from '@tanstack/react-query';
 import { ScreenWrapper } from '@/components/common/ScreenWrapper';
 import { Typography } from '@/components/common/Typography';
 import { Button } from '@/components/common/Button';
@@ -21,7 +20,6 @@ import { LanguageSelector } from '@/components/common/LanguageSelector';
 
 
 export default function ProfileScreen() {
-  const queryClient = useQueryClient();
   const { user, logout, isLoading, error, clearError, updateProfile } =
     useAuthStore();
 
@@ -65,8 +63,6 @@ export default function ProfileScreen() {
         fixed_expenses:
           fixedExpenses.trim() === '' ? undefined : Number(fixedExpenses),
       });
-      queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
-      queryClient.invalidateQueries({ queryKey: ['forecast'] });
       setSaveSuccess(true);
       setIsEditing(false);
       setTimeout(() => setSaveSuccess(false), 4000);

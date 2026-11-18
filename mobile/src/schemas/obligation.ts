@@ -20,14 +20,14 @@ export const obligationSchema = z.object({
     .string()
     .trim()
     .min(1, 'Total amount is required')
-    .refine((val) => !isNaN(Number(val)) && Number(val) >= 0, {
+    .refine((val) => Number.isFinite(Number(val)) && Number(val) >= 0, {
       message: 'Total amount must be a non-negative number',
     }),
   monthly_installment_amount: z
     .string()
     .trim()
     .min(1, 'Monthly installment is required')
-    .refine((val) => !isNaN(Number(val)) && Number(val) >= 0, {
+    .refine((val) => Number.isFinite(Number(val)) && Number(val) >= 0, {
       message: 'Monthly installment must be a non-negative number',
     }),
   start_date: z

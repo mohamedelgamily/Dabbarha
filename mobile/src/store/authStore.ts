@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { authApi, type UserUpdate } from '@/api/auth';
+import { queryClient } from '@/api/queryClient';
 import { sessionsApi } from '@/api/sessions';
 import { activateAutomaticRefresh } from '@/api/automaticRefresh';
 import { readSessionRecord, saveNewSession, clearStoredSessionForLogout } from '@/utils/sessionStorage';
@@ -258,9 +259,18 @@ export const useAuthStore = create<AuthStoreState>((set, get) => ({
     try {
       const updated = await authApi.updateMe(data);
       assertSession(id);
-      await authStorageTask(async () => { assertSession(id); await saveUser(updated); });
+      // The server response is authoritative; the cached profile is optional.
+      set({ user: updated });
+      void queryClient.invalidateQueries({ queryKey: ['dashboard-summary', id] }).catch(() => undefined);
+      void queryClient.invalidateQueries({ queryKey: ['forecast', id] }).catch(() => undefined);
+      try {
+        await authStorageTask(async () => { assertSession(id); await saveUser(updated); });
+      } catch {
+        // Ignore only local profile-cache failure, never an ended session.
+        assertSession(id);
+      }
       assertSession(id);
-      set({ user: updated, isLoading: false });
+      set({ isLoading: false });
       return updated;
     } catch (err: any) {
       if (id === sessionSnapshot().generation) set({ isLoading: false, error: err?.message || 'Failed to update profile. Please try again.' });
