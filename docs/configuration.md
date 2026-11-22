@@ -38,6 +38,11 @@ a separate migration credential, not the API JWT key.
 
 ## Local development
 
+On Windows, use the [Windows local development guide](windows-local-development.md)
+for the idempotent PowerShell bootstrap, ignored `.env.local`, V2 session keys,
+local SQLite migration check and physical-phone startup. That flow generates
+only missing local secrets instead of copying placeholder values from a template.
+
 1. Create an ignored `.env.local` from `.env.example` and restrict access to its
    owner. This does not require changing an existing `.env` file.
 2. Set `APP_ENV=development` explicitly and fill `JWT_SECRET_KEY` using a password
