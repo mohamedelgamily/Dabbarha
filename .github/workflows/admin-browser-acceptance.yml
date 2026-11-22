@@ -1,0 +1,73 @@
+name: Admin browser acceptance
+on:
+  push:
+    branches: [mohamed/backend]
+    paths:
+      - 'admin-dashboard/**'
+      - '.github/workflows/admin-browser-acceptance.yml'
+      - 'app/**'
+      - 'alembic/**'
+      - 'alembic.ini'
+      - 'requirements-linux-py312.lock'
+      - 'constraints-python312.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  chromium:
+    if: github.ref == 'refs/heads/mohamed/backend'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - name: Install locked test dependencies
+        run: |
+          echo "PLAYWRIGHT_BROWSERS_PATH=$RUNNER_TEMP/dabbarha-browsers" >> "$GITHUB_ENV"
+          export PLAYWRIGHT_BROWSERS_PATH="$RUNNER_TEMP/dabbarha-browsers"
+          python -m venv "$RUNNER_TEMP/acceptance-python"
+          "$RUNNER_TEMP/acceptance-python/bin/python" -m pip install pip==26.2.2
+          "$RUNNER_TEMP/acceptance-python/bin/python" -m pip install --only-binary=:all: --require-hashes -c constraints-python312.txt -r requirements-linux-py312.lock
+          "$RUNNER_TEMP/acceptance-python/bin/python" -m pip check
+          cd admin-dashboard/acceptance
+          npm ci --ignore-scripts --no-audit --no-fund
+          node node_modules/playwright-core/cli.js install --with-deps --no-shell chromium
+          sudo apt-get install -y libnss3-tools iproute2
+      - name: Configure disposable Chromium and loopback namespace
+        working-directory: admin-dashboard/acceptance
+        run: |
+          chrome=$(node --input-type=module -e "import {chromium} from 'playwright-core'; console.log(chromium.executablePath())")
+          test -x "$chrome"
+          # Ubuntu restricts unprivileged user namespaces. Permit Chromium's own
+          # sandbox for this exact downloaded executable on the ephemeral VM.
+          printf 'abi <abi/4.0>,\ninclude <tunables/global>\nprofile dabbarha-ci-chromium "%s" flags=(unconfined) {\n  userns,\n}\n' "$chrome" > "$RUNNER_TEMP/dabbarha-chromium.profile"
+          sudo apparmor_parser -r "$RUNNER_TEMP/dabbarha-chromium.profile"
+          sudo ip netns add dabbarha-ci
+          sudo ip -n dabbarha-ci link set lo up
+      - name: Run real HTTPS browser journey without external networking
+        run: |
+          sudo ip netns exec dabbarha-ci sudo -u "$(id -un)" env -i \
+            PATH="$PATH" HOME="$HOME" PLAYWRIGHT_BROWSERS_PATH="$PLAYWRIGHT_BROWSERS_PATH" \
+            PYTHONDONTWRITEBYTECODE=1 "$RUNNER_TEMP/acceptance-python/bin/python" admin-dashboard/acceptance/verify.py
+      - name: Remove disposable runtime
+        if: always()
+        run: |
+          if sudo ip netns list | grep -q '^dabbarha-ci\b'; then
+            sudo ip netns pids dabbarha-ci | xargs -r sudo kill -KILL || true
+            sudo ip netns delete dabbarha-ci
+          fi
+          if test -f "$RUNNER_TEMP/dabbarha-chromium.profile"; then
+            sudo apparmor_parser -R "$RUNNER_TEMP/dabbarha-chromium.profile"
+          fi
+          rm -rf -- "$PLAYWRIGHT_BROWSERS_PATH" "$RUNNER_TEMP/acceptance-python"

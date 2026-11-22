@@ -1,0 +1,7 @@
+{
+  "name": "dabbarha-browser-acceptance",
+  "private": true,
+  "devDependencies": {
+    "playwright-core": "1.65.1"
+  }
+}
