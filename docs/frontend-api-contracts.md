@@ -1,10 +1,12 @@
 # Mobile API Contracts — Dabbarha v1
 
-Source of truth: current FastAPI routes and Pydantic schemas in `app/api/routes/` and `app/schemas/`. Paths below are rooted at the backend origin. Examples use placeholders only. Except for `/health` and the public deletion-information page, routes require `Authorization: Bearer <access_token>`. Do not log credentials or private payloads. Money is JSON decimal text with two fractional digits; dates are ISO `YYYY-MM-DD`; timestamps are ISO 8601; session epoch fields are Unix seconds.
+Source of truth: current FastAPI routes and Pydantic schemas in `app/api/routes/` and `app/schemas/`. Paths below are rooted at the backend origin. Examples use placeholders only. Use the authentication requirement specified for each route. Registration, password sign-in, refresh exchange, public probes and the deletion-information page do not require an access bearer. Protected mobile routes use `Authorization: Bearer <access_token>`. Do not log credentials or private payloads. Money is JSON decimal text with two fractional digits; dates are ISO `YYYY-MM-DD`; timestamps are ISO 8601; session epoch fields are Unix seconds.
 
 ## Public service status
 
 `GET /health` returns `{ "status": "ok" }`. It is a simple process liveness check, not a guarantee that database, Redis, worker or notification dependencies are healthy. Do not use it as the sole production readiness monitor.
+
+`GET /ready` is a public binary dependency probe. It returns 200 with status `ready` or 503 with status `unavailable` and `Retry-After: 3`. It checks the database, exact migration heads and the Redis limiter when configured. Operational details require administrator MFA.
 
 ## Authentication and account
 
