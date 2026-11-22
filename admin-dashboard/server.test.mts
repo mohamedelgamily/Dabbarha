@@ -24,7 +24,7 @@ async function fixture(t,role='admin') {
   t.after(async()=>{await new Promise(r=>server.close(r));await app.close()});
   let cookie='',csrf='';
   async function request(path='/',fields={},headers={}) {
-    const post=path!=='/';
+    const post=path!=='/' && path!=='/device-sessions';
     const payload=new URLSearchParams({csrf,...fields}).toString();
     const res=await new Promise((resolve,reject)=>{
       const req=httpRequest({hostname:'127.0.0.1',port:server.address().port,path,method:post?'POST':'GET',
@@ -57,7 +57,8 @@ test('rotation invalidates pre-MFA handles, checks role upstream, escapes labels
   const active=await f.request('/mfa',{code:'123456'});
   assert.equal(active.status,200);assert.notEqual(pending.cookie,active.cookie);
   assert.equal((await f.request('/sessions',{csrf:pending.csrf},{cookie:pending.cookie})).status,401);
-  assert.match((await f.request('/sessions')).html,/&lt;script&gt;/);
+  assert.equal((await f.request('/sessions')).status,303);
+  assert.match((await f.request('/device-sessions')).html,/&lt;script&gt;/);
   assert.equal(f.calls.at(-2)[1].headers.Authorization,'Bearer admin-secret');
   assert.equal((await f.request('/revoke',{sid:'../bad'})).status,400);
   assert.match((await f.request('/revoke',{sid:f.sid,password:'example'})).html,/Current device session revoked/);

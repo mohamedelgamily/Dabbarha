@@ -11,7 +11,7 @@ class Failure extends Error {
   status: number;
   constructor(status: number) { super(); this.status = status; }
 }
-type Session = { csrf: string; until: number; busy: boolean; access?: string; refresh?: string; admin?: string; sid?: string };
+type Session = { csrf: string; until: number; busy: boolean; access?: string; refresh?: string; admin?: string; sid?: string; devicePage?: boolean };
 const routes = {
   login: ['POST','/auth/sessions'], mfa: ['POST','/admin/auth/step-up'],
   identity: ['GET','/admin/auth/me'], list: ['GET','/auth/sessions?limit=50'],
@@ -76,14 +76,14 @@ export function dashboard(publicOrigin: string, upstream: string, transport = fe
       if (closing || req.headers.host !== host) throw new Failure(closing ? 503 : 403);
       const path = req.url;
       const post = req.method === 'POST';
-      if (!(post ? ['/login','/mfa','/logout','/sessions','/revoke'] : ['/']).includes(path ?? '') || (!post && req.method !== 'GET')) throw new Failure(404);
+      if (!(post ? ['/login','/mfa','/logout','/sessions','/revoke'] : ['/','/device-sessions']).includes(path ?? '') || (!post && req.method !== 'GET')) throw new Failure(404);
       if (post && (req.headers.origin !== publicOrigin || req.headers['content-type'] !== 'application/x-www-form-urlencoded')) throw new Failure(403);
       const values = (req.headers.cookie ?? '').split(';').map(x => x.trim()).filter(x => x.startsWith(cookie+'='));
       let key = values.length === 1 ? values[0].slice(cookie.length+1) : '';
       let s = sessions.get(key);
       if (s && s.until <= now()) s = undefined;
       if (!s) {
-        if (post) throw new Failure(401);
+        if (post || path === '/device-sessions') throw new Failure(401);
         if (sessions.size >= 128) throw new Failure(503);
         key = nonce(); s = {csrf:nonce(),until:now()+300000,busy:false};
         sessions.set(key,s); setCookie(key,300);
@@ -124,9 +124,9 @@ export function dashboard(publicOrigin: string, upstream: string, transport = fe
         const result = await call('mfa',s.access,{code:f.get('code')});
         if (!result.access_token || !(result.expires_in > 0)) throw new Failure(503);
         s.admin = result.access_token; s.until = Math.min(s.until,now()+result.expires_in*1000); rotate();
-      } else if (path !== '/' && path !== '/sessions' && path !== '/revoke') throw new Failure(403);
+      } else if (path !== '/' && path !== '/sessions' && path !== '/device-sessions' && path !== '/revoke') throw new Failure(403);
       if (!s.admin) {
-        if (path === '/sessions' || path === '/revoke') throw new Failure(403);
+        if (path === '/sessions' || path === '/device-sessions' || path === '/revoke') throw new Failure(403);
         return s.access ? page('Administrator verification',form('mfa','<label>Authenticator code <input name="code" inputmode="numeric" pattern="[0-9]{6}" required></label>','Verify')+out()) :
           page('Administrator sign in',form('login','<label>Email <input type="email" name="email" required></label>'+password,'Continue'));
       }
@@ -140,6 +140,11 @@ export function dashboard(publicOrigin: string, upstream: string, transport = fe
         if (sid === s.sid) { sessions.delete(key); setCookie('',0); return page('Current device session revoked'); }
       }
       if (path === '/sessions') {
+        s.devicePage = true;
+        res.writeHead(303, {Location: '/device-sessions'}); res.end(); return;
+      }
+      if (path === '/device-sessions') {
+        if (!s.devicePage) throw new Failure(403);
         const rows = await call('list',s.access);
         const items = rows.map((r: {id:string;device_label:string|null;revoked_at:number|null}) => uuid.test(r.id) ?
           '<li>'+escaped(r.device_label ?? 'Device')+(r.revoked_at ? ' (revoked)' : form('revoke','<input type="hidden" name="sid" value="'+r.id+'">'+password,'Revoke this session'))+'</li>' : '').join('');

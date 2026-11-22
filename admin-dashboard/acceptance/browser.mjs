@@ -75,7 +75,7 @@ try {
   phase('real Back navigation');
   const cdp = await context.newCDPSession(page);
   const before = await cdp.send('Page.getNavigationHistory');
-  assert.equal(before.entries[before.currentIndex-1].url,origin+'/sessions');
+  assert.equal(before.entries[before.currentIndex-1].url,origin+'/device-sessions');
   // History traversal can commit Chromium's internal expired-POST document
   // without producing a successful HTTP navigation for Playwright.goBack().
   await page.evaluate(() => history.back());
@@ -96,7 +96,7 @@ try {
     document.querySelector('h1')?.textContent !== 'Signed out');
   await privateContentAbsent();
   phase('direct entry and reload after logout');
-  for (const [path,status,title] of [['/sessions',404,'Unavailable'],['/',200,'Administrator sign in']]) {
+  for (const [path,status,title] of [['/device-sessions',401,'Authentication failed or session expired'],['/sessions',404,'Unavailable'],['/',200,'Administrator sign in']]) {
     assert.equal((await page.goto(origin+path)).status(),status);
     await heading(title); await privateContentAbsent();
     assert.equal((await page.reload()).status(),status);
