@@ -33,6 +33,7 @@ async function fixture(t,role='admin') {
     });
     let html='';for await(const chunk of res) html+=chunk;
     assert.doesNotMatch(html,/base-secret|refresh-secret|admin-secret/);
+    assert.equal(res.headers['referrer-policy'],'same-origin');
     const set=res.headers['set-cookie']?.[0];
     if(set) {assert.match(set,/HttpOnly; Secure; SameSite=Strict/); cookie=set.split(';')[0];}
     csrf=html.match(/name="csrf" value="([^"]+)"/)?.[1]??csrf;

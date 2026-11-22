@@ -23,7 +23,10 @@ try {
   const context = await browser.newContext({ ignoreHTTPSErrors: false });
   const page = await context.newPage();
   page.setDefaultTimeout(10000);
-  const heading = text => page.getByRole('heading', {name: text, exact: true}).waitFor();
+  const heading = text => { phase('heading: '+text); return page.getByRole('heading', {name: text, exact: true}).waitFor(); };
+  page.on('response', response => {
+    if (response.request().isNavigationRequest()) console.log('Navigation HTTP '+response.status());
+  });
   const protectedText = /Your device sessions|Administrator browser|Revoke this session|View own sessions/;
   let restored = false;
   page.on('console', msg => { if (msg.text() === 'protected-document-restored') restored = true; });

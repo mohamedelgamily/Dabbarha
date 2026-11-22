@@ -61,7 +61,8 @@ export function dashboard(publicOrigin: string, upstream: string, transport = fe
     res.setHeader('Cache-Control','no-store');
     res.setHeader('Content-Type','text/html; charset=utf-8');
     res.setHeader('Content-Security-Policy',"default-src 'none'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'");
-    res.setHeader('Referrer-Policy','no-referrer');
+    // Preserve Origin on same-site form POSTs; suppress cross-origin referral data.
+    res.setHeader('Referrer-Policy','same-origin');
     res.setHeader('X-Content-Type-Options','nosniff');
     res.setHeader('Strict-Transport-Security','max-age=31536000');
     const setCookie = (key: string, seconds: number) => res.setHeader('Set-Cookie',cookie+'='+key+'; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age='+seconds);
