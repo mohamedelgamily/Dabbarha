@@ -1,5 +1,7 @@
 # Phase 2h.2 release review
 
+Historical snapshot. The dashboard assessment and counts below describe Phase 2h.2. The current browser dashboard, hosted Chromium evidence and deployment responsibilities are documented in the [release handoff](jomana-release-handoff.md) and [launch checklist](LAUNCH_CHECKLIST.md). Native Windows and physical-phone acceptance remain assigned to Jomana.
+
 ## Dependency remediation and verification
 
 The external Phase 2h.1 log stopped at pip-audit on dnspython 2.8.0.

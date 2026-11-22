@@ -362,7 +362,7 @@ cd ~/Projects/dabbarha-backend && bash scripts/run-phase-2h2-verification.sh
 
 Expect 44 matching pins, 44 Linux lock hashes, clean dependency and Git/secret
 checks, 21 passing Windows helper cases, seven passing focused integration cases
-and 756 full-suite passes with
+and a complete backend suite (756 cases at Phase 2h.2, 757 at the dashboard handoff) with
 zero failures, errors, skips, deselections or expected failures. The existing
 Starlette/httpx warning is acceptable. Send the log path and Windows smoke
 results for review, including the frontend commit used.
