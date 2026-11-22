@@ -2,7 +2,10 @@
 set -euo pipefail
 
 ROOT=$(cd -- "$(dirname -- "$0")/.." && pwd)
-unset PYTHONPATH PYTHONHOME
+unset PYTHONPATH PYTHONHOME PYTEST_ADDOPTS PYTEST_PLUGINS
+PHASE=2g.3
+if [[ ${1:-} == --phase-2h1 ]]; then PHASE=2h.1; fi
+umask 077
 : "${VERIFY_PYTHON:?Set VERIFY_PYTHON to the clean CPython 3.12 interpreter}"
 : "${REDIS_SERVER_BINARY:?Set REDIS_SERVER_BINARY to the disposable Redis 7.4.11 binary}"
 : "${POSTGRES_TEST_BIN:?Set POSTGRES_TEST_BIN to the disposable PostgreSQL 18.6 bin directory}"
@@ -20,7 +23,7 @@ finish() {
   log "=== Final Git, whitespace, artifact and secret checks ==="
   if ! git -C "$ROOT" diff --check 2>&1 | tee -a "$LOG_FILE"; then result=1; fi
   if ! git -C "$ROOT" diff --cached --check 2>&1 | tee -a "$LOG_FILE"; then result=1; fi
-  if ! git -C "$ROOT" diff --cached --quiet; then log "Unexpected staged changes found; Phase 2g.3 runner does not stage files."; result=1; fi
+  if ! git -C "$ROOT" diff --cached --quiet; then log "Unexpected staged changes found; Phase $PHASE runner does not stage files."; result=1; fi
   while IFS= read -r path; do
     [[ -n "$path" ]] || continue
     case "$path" in
@@ -67,7 +70,7 @@ for executable in "$VERIFY_PYTHON" "$REDIS_SERVER_BINARY" "$POSTGRES_TEST_BIN/in
   [[ -x "$executable" ]] || { log "Required executable missing/not executable: $executable"; exit 2; }
 done
 cd "$ROOT"
-log "Phase 2g.3 verification log: $LOG_FILE"
+log "Phase $PHASE verification log: $LOG_FILE"
 log "Repository: $ROOT"
 log "No packages will be installed or upgraded."
 "$VERIFY_PYTHON" - "$ROOT/constraints-python312.txt" "$ROOT/requirements-linux-py312.lock" <<'PYCHECK' 2>&1 | tee -a "$LOG_FILE"
@@ -189,6 +192,11 @@ run_logged "$VERIFY_PYTHON" -m pip check
 log "=== pip-audit ==="
 run_logged "$PIP_AUDIT_BIN" --path "$SITE_PACKAGES" --cache-dir "$PIP_AUDIT_CACHE_DIR" --strict
 
+if [[ "$PHASE" == 2h.1 ]]; then
+  log "=== Focused Windows setup helper regressions (Mac Python) ==="
+  run_logged "$VERIFY_PYTHON" -m pytest -vv -ra --tb=short -p no:cacheprovider tests/test_windows_local_development.py
+fi
+
 log "=== Focused Redis DNS/TLS, readiness and worker-isolation regressions ==="
 run_logged "$VERIFY_PYTHON" -m pytest -vv -ra --tb=short -p no:cacheprovider \
   tests/test_api_security.py -k 'managed_redis or private_dns'
@@ -217,8 +225,9 @@ done
 
 log "=== Complete backend suite; PostgreSQL and Redis integrations are mandatory ==="
 run_logged "$VERIFY_PYTHON" -m pytest -vv -ra --tb=short -p no:cacheprovider
-summary=$(grep -E '^=+ [0-9]+ passed' "$LOG_FILE" | tail -n 1 || true)
-if [[ -z "$summary" || "$summary" == *skipped* || "$summary" == *deselected* || "$summary" == *failed* ]]; then
+full_suite=$(sed -n '/^=== Complete backend suite/,$p' "$LOG_FILE")
+summary=$(grep -E '^=+ [0-9]+ passed' <<< "$full_suite" | tail -n 1 || true)
+if [[ ! "$summary" =~ ^[=]+[[:space:]][0-9]+[[:space:]]passed(,[[:space:]][0-9]+[[:space:]]warnings?)?[[:space:]]in[[:space:]] ]]; then
   log "Complete-suite summary missing or includes failures/skips: ${summary:-none}"; exit 1
 fi
 for required_case in \
@@ -227,6 +236,6 @@ for required_case in \
   'tests/test_api_security.py::test_real_redis_expiry_and_reservation_release PASSED' \
   'tests/test_api_security.py::test_independent_worker_processes_share_one_quota PASSED' \
   'tests/test_api_security.py::test_actual_redis_runtime_startup_api_quota_and_private_socket PASSED'; do
-  grep -Fq "$required_case" "$LOG_FILE" || { log "Required full-suite integration did not pass: $required_case"; exit 1; }
+  grep -Fq "$required_case" <<< "$full_suite" || { log "Required full-suite integration did not pass: $required_case"; exit 1; }
 done
-log "All Phase 2g.3 checks passed against disposable local services only; no staging or production validation is implied."
+log "All Phase $PHASE checks passed against disposable local services only; no staging or production validation is implied."
