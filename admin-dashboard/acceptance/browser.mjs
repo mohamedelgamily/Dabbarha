@@ -76,12 +76,24 @@ try {
   const cdp = await context.newCDPSession(page);
   const before = await cdp.send('Page.getNavigationHistory');
   assert.equal(before.entries[before.currentIndex-1].url,origin+'/sessions');
-  // Chromium can show an internal expired-POST page on history traversal.
-  try { await page.goBack({waitUntil:'load'}); }
-  catch (e) { if (!String(e).includes('ERR_CACHE_MISS')) throw e; }
-  const after = await cdp.send('Page.getNavigationHistory');
-  assert.equal(after.currentIndex,before.currentIndex-1);
-  assert.equal(after.entries[after.currentIndex].url,origin+'/sessions');
+  // History traversal can commit Chromium's internal expired-POST document
+  // without producing a successful HTTP navigation for Playwright.goBack().
+  await page.evaluate(() => history.back());
+  phase('Back commits the previous device-list history entry');
+  let moved = false;
+  for (let i=0; i<100; i++) {
+    const history = await cdp.send('Page.getNavigationHistory');
+    if (history.currentIndex === before.currentIndex-1 &&
+        history.entries[history.currentIndex].id === before.entries[before.currentIndex-1].id) {
+      moved = true;
+      break;
+    }
+    await page.waitForTimeout(50);
+  }
+  assert.ok(moved);
+  phase('Back shows no protected content');
+  await page.waitForFunction(() => document.readyState === 'complete' &&
+    document.querySelector('h1')?.textContent !== 'Signed out');
   await privateContentAbsent();
   phase('direct entry and reload after logout');
   for (const [path,status,title] of [['/sessions',404,'Unavailable'],['/',200,'Administrator sign in']]) {
