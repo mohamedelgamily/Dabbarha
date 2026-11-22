@@ -1,0 +1,42 @@
+name: Backend release checks
+on:
+  push:
+    branches: [mohamed/backend]
+    paths: ['app/**', 'tests/**', 'admin-dashboard/**', '.github/workflows/backend-release-check.yml', 'requirements-linux-py312.lock', 'constraints-python312.txt', 'alembic/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  release:
+    if: github.ref == 'refs/heads/mohamed/backend'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - name: Install locked environment and disposable service binaries
+        run: |
+          python -m pip install --only-binary=:all: --require-hashes -c constraints-python312.txt -r requirements-linux-py312.lock
+          python -m pip check
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql redis-server
+      - name: Run backend and dashboard suites
+        env:
+          REQUIRE_POSTGRES_TESTS: '1'
+          REQUIRE_REDIS_TESTS: '1'
+          DATABASE_URL: 'sqlite:///:memory:'
+          APP_ENV: test
+        run: |
+          export POSTGRES_TEST_BIN="$(pg_config --bindir)"
+          export REDIS_SERVER_BINARY="$(command -v redis-server)"
+          test -x "$POSTGRES_TEST_BIN/initdb"
+          python -m pytest -q --junitxml="$RUNNER_TEMP/results.xml"
+          python -c 'import sys,xml.etree.ElementTree as E; sys.exit(any(int(s.get("skipped","0")) for s in E.parse(sys.argv[1]).iter("testsuite")))' "$RUNNER_TEMP/results.xml"
+          node --test admin-dashboard/*.test.mts
