@@ -132,12 +132,20 @@ def _delivery_record(delivery: NotificationDelivery, notification: Notification,
     }
 
 
+def _lock_step_up_account(db, user_id: int):
+    # A previously loaded ORM identity can predate the transaction that just
+    # consumed a code. Refresh its attributes from the locked database row.
+    return db.scalar(select(User).where(User.id == user_id).with_for_update()
+                     .execution_options(populate_existing=True))
+
+
 @router.post("/auth/step-up", response_model=AdminStepUpResponse)
 def step_up(body: AdminStepUpRequest, request: Request,
             identity=Depends(session_identity), db=Depends(get_db)):
     user, session_id = identity
     runtime = request.app.state.security
     source = source_ip(request.scope)
+    user_id = user.id
     reservation = runtime.login_reserve(user.email, source)
     db.rollback()
     now = int(time.time())
@@ -146,14 +154,14 @@ def step_up(body: AdminStepUpRequest, request: Request,
             db.execute(text("BEGIN IMMEDIATE"))
         elif db.get_bind().dialect.name == "postgresql":
             db.execute(text("SELECT set_config('lock_timeout', '3s', true)"))
-        row = db.scalar(select(User).where(User.id == user.id).with_for_update())
+        row = _lock_step_up_account(db, user_id)
         valid_step = None
         if row is not None and row.admin_role in {"admin", "superadmin"}:
             settings = request.app.state.admin_settings
             if (row.admin_totp_nonce is None or row.admin_totp_ciphertext is None
                     or row.admin_totp_key_id != settings.totp_key_id):
                 write_audit(db, runtime.settings.hmac_key, "admin_totp_factor_unavailable", "failure",
-                            actor_id=user.id, source=source)
+                            actor_id=user_id, source=source)
                 db.commit()
                 raise HTTPException(503, "Administrator verification is temporarily unavailable.",
                                     headers={"Retry-After": "1"})
@@ -162,16 +170,17 @@ def step_up(body: AdminStepUpRequest, request: Request,
                                              row.id, settings, row.admin_totp_key_id)
             except Exception:
                 write_audit(db, runtime.settings.hmac_key, "admin_totp_factor_unavailable", "failure",
-                            actor_id=user.id, source=source)
+                            actor_id=user_id, source=source)
                 db.commit()
                 raise HTTPException(503, "Administrator verification is temporarily unavailable.",
                                     headers={"Retry-After": "1"}) from None
             valid_step = matching_totp_step(secret, body.code, now, row.admin_totp_last_step)
         if valid_step is None:
             write_audit(db, runtime.settings.hmac_key, "admin_totp_step_up", "failure",
-                        actor_id=user.id, source=source)
+                        actor_id=user_id, source=source)
             db.commit()  # Persist failed attempts without retaining client input or secrets.
             raise HTTPException(401, "Administrator verification failed.", headers={"WWW-Authenticate": "Bearer"})
+        verified_role = row.admin_role
         row.admin_totp_last_step = valid_step
         write_audit(db, runtime.settings.hmac_key, "admin_totp_step_up", "success",
                     actor_id=row.id, source=source)
@@ -179,12 +188,12 @@ def step_up(body: AdminStepUpRequest, request: Request,
         runtime.limiter.release(reservation)
         expires = now + request.app.state.admin_settings.stepup_minutes * 60
         token = jwt.encode({
-            "sub": str(row.id), "sid": session_id, "jti": str(uuid4()), "iat": now,
+            "sub": str(user_id), "sid": session_id, "jti": str(uuid4()), "iat": now,
             "exp": expires, "token_use": "admin_stepup", "ver": 2,
-            "admin_role": row.admin_role, "admin_mfa_at": now,
+            "admin_role": verified_role, "admin_mfa_at": now,
         }, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
         return AdminStepUpResponse(access_token=token, expires_in=expires - now,
-                                   admin_role=row.admin_role)
+                                   admin_role=verified_role)
     except HTTPException:
         db.rollback()
         raise

@@ -569,6 +569,21 @@ def test_admin_endpoints_are_hidden_when_feature_is_off(session_api, monkeypatch
     assert response.status_code == 404
 
 
+def test_step_up_locked_read_refreshes_preloaded_replay_state(session_db, user_id):
+    from sqlalchemy import update
+    from app.api.routes.admin import _lock_step_up_account
+
+    with Session(session_db) as db:
+        cached = db.get(User, user_id)
+        assert cached.admin_totp_last_step is None
+        # Model a database row newer than the identity map, without scheduling
+        # threads or depending on a particular PostgreSQL lock acquisition order.
+        db.execute(update(User).where(User.id == user_id).values(admin_totp_last_step=123)
+                   .execution_options(synchronize_session=False))
+        assert cached.admin_totp_last_step is None
+        assert _lock_step_up_account(db, user_id).admin_totp_last_step == 123
+
+
 def test_admin_totp_concurrent_replay_only_one_step_up(session_api, monkeypatch):
     import time
     from app.core.admin_settings import AdminSettings
