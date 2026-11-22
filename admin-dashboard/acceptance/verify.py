@@ -133,7 +133,7 @@ def run():
         with SessionLocal.begin() as db:
             user = db.get(User, response.json()["id"])
             settings = AdminSettings.from_environ(api_env)
-            user.admin_role = "admin"
+            user.admin_role = "superadmin"
             user.admin_totp_key_id = settings.totp_key_id
             user.admin_totp_nonce, user.admin_totp_ciphertext = encrypt_totp_secret(seed, user.id, settings)
 

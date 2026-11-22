@@ -1,3 +1,5 @@
+import {consoleNav, consoleView, ConsoleError} from './console.mts';
+import {layout, stylePolicy} from './layout.mts';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { isPrimary } from 'node:cluster';
@@ -32,9 +34,13 @@ export function dashboard(publicOrigin: string, upstream: string, transport = fe
   async function call(action: keyof typeof routes, token?: string, body?: object, sid?: string) {
     const [method, path] = routes[action];
     if (action === 'revoke' && !uuid.test(sid ?? '')) throw new Failure(400);
-    const r = await transport(upstream + path + (action === 'revoke' ? sid + '/revoke' : ''), {
+    return send(method,path + (action === 'revoke' ? sid + '/revoke' : ''),token,body);
+  }
+  async function send(method:string,path:string,token?:string,body?:object,code?:string) {
+    const r = await transport(upstream + path, {
       method, redirect:'error', signal:AbortSignal.timeout(4000),
-      headers:{...(token ? {Authorization:'Bearer ' + token} : {}), ...(body ? {'Content-Type':'application/json'} : {})},
+      headers:{...(token ? {Authorization:'Bearer ' + token} : {}), ...(body ? {'Content-Type':'application/json'} : {}),
+        ...(code ? {'X-Admin-TOTP':code} : {})},
       body:body ? JSON.stringify(body) : undefined
     });
     if (!r.ok) { await r.body?.cancel(); throw new Failure([401,403,404,409,422,429].includes(r.status) ? r.status : 503); }
@@ -60,7 +66,7 @@ export function dashboard(publicOrigin: string, upstream: string, transport = fe
     res.setTimeout(10000, () => res.destroy());
     res.setHeader('Cache-Control','no-store');
     res.setHeader('Content-Type','text/html; charset=utf-8');
-    res.setHeader('Content-Security-Policy',"default-src 'none'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'");
+    res.setHeader('Content-Security-Policy',"default-src 'none'; style-src "+stylePolicy+"; form-action 'self'; frame-ancestors 'none'; base-uri 'none'");
     // Preserve Origin on same-site form POSTs; suppress cross-origin referral data.
     res.setHeader('Referrer-Policy','same-origin');
     res.setHeader('X-Content-Type-Options','nosniff');
@@ -68,7 +74,7 @@ export function dashboard(publicOrigin: string, upstream: string, transport = fe
     const setCookie = (key: string, seconds: number) => res.setHeader('Set-Cookie',cookie+'='+key+'; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age='+seconds);
     function page(title: string, content = '', status = 200) {
       res.statusCode = status;
-      res.end('<!doctype html><html lang="en"><meta charset="utf-8"><title>Dabbarha Admin</title><main><h1>'+title+'</h1>'+content+'</main></html>');
+      res.end(layout(title,content));
     }
     let locked: Session | undefined;
     let rejectedKey: string | undefined;
@@ -76,7 +82,7 @@ export function dashboard(publicOrigin: string, upstream: string, transport = fe
       if (closing || req.headers.host !== host) throw new Failure(closing ? 503 : 403);
       const path = req.url;
       const post = req.method === 'POST';
-      if (!(post ? ['/login','/mfa','/logout','/sessions','/revoke'] : ['/','/device-sessions']).includes(path ?? '') || (!post && req.method !== 'GET')) throw new Failure(404);
+      if (!(post ? ['/login','/mfa','/logout','/sessions','/revoke','/console'] : ['/','/device-sessions']).includes(path ?? '') || (!post && req.method !== 'GET')) throw new Failure(404);
       if (post && (req.headers.origin !== publicOrigin || req.headers['content-type'] !== 'application/x-www-form-urlencoded')) throw new Failure(403);
       const values = (req.headers.cookie ?? '').split(';').map(x => x.trim()).filter(x => x.startsWith(cookie+'='));
       let key = values.length === 1 ? values[0].slice(cookie.length+1) : '';
@@ -124,9 +130,9 @@ export function dashboard(publicOrigin: string, upstream: string, transport = fe
         const result = await call('mfa',s.access,{code:f.get('code')});
         if (!result.access_token || !(result.expires_in > 0)) throw new Failure(503);
         s.admin = result.access_token; s.until = Math.min(s.until,now()+result.expires_in*1000); rotate();
-      } else if (path !== '/' && path !== '/sessions' && path !== '/device-sessions' && path !== '/revoke') throw new Failure(403);
+      } else if (path !== '/' && path !== '/console' && path !== '/sessions' && path !== '/device-sessions' && path !== '/revoke') throw new Failure(403);
       if (!s.admin) {
-        if (path === '/sessions' || path === '/device-sessions' || path === '/revoke') throw new Failure(403);
+        if (path === '/console' || path === '/sessions' || path === '/device-sessions' || path === '/revoke') throw new Failure(403);
         return s.access ? page('Administrator verification',form('mfa','<label>Authenticator code <input name="code" inputmode="numeric" pattern="[0-9]{6}" required></label>','Verify')+out()) :
           page('Administrator sign in',form('login','<label>Email <input type="email" name="email" required></label>'+password,'Continue'));
       }
@@ -134,6 +140,13 @@ export function dashboard(publicOrigin: string, upstream: string, transport = fe
       const identity = await call('identity',s.admin);
       if (!['admin','superadmin'].includes(identity.admin_role) || !(identity.step_up_expires_at*1000 > now()) || s.until <= now()) throw new Failure(403);
       rejectedKey = undefined;
+      const nav = consoleNav(identity.admin_role,form);
+      if (path === '/console') {
+        const [title,body] = await consoleView(identity.admin_role,f,form,(method,path,body,code) =>
+          send(method,path,path === '/ready' ? undefined : s.admin,body,code));
+        if (s.until <= now()) throw new Failure(401);
+        return page(title,nav+body);
+      }
       if (path === '/revoke') {
         const sid = f.get('sid') ?? '';
         await call('revoke',s.access,{password:f.get('password')},sid);
@@ -148,11 +161,11 @@ export function dashboard(publicOrigin: string, upstream: string, transport = fe
         const rows = await call('list',s.access);
         const items = rows.map((r: {id:string;device_label:string|null;revoked_at:number|null}) => uuid.test(r.id) ?
           '<li>'+escaped(r.device_label ?? 'Device')+(r.revoked_at ? ' (revoked)' : form('revoke','<input type="hidden" name="sid" value="'+r.id+'">'+password,'Revoke this session'))+'</li>' : '').join('');
-        return page('Your device sessions','<ul>'+items+'</ul>'+out());
+        return page('Your device sessions',nav+'<ul>'+items+'</ul>'+out());
       }
-      page('Administrator session', '<p>'+escaped(identity.admin_role)+'</p>'+form('sessions','','View own sessions')+out());
+      page('Administrator session', '<p>'+escaped(identity.admin_role)+'</p>'+nav+out());
     } catch (e) {
-      const status = e instanceof Failure ? e.status : 503;
+      const status = e instanceof Failure || e instanceof ConsoleError ? e.status : 503;
       if (locked && rejectedKey && [401,403].includes(status)) {
         setCookie('',0);
         try { await discard(rejectedKey,locked); } catch { console.warn('Admin session cleanup unconfirmed'); }
