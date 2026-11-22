@@ -752,3 +752,13 @@ def test_support_financial_read_database_failure_is_safe_503(enrolled_support_su
                           headers={**headers, "X-Admin-TOTP": "000000"})
     assert response.status_code == 503
     assert "private database detail" not in response.text and "SELECT" not in response.text
+
+
+def test_readiness_finds_packaged_heads_from_other_working_directory(tmp_path, monkeypatch):
+    from app.services.readiness import expected_migration_heads
+
+    expected_migration_heads.cache_clear()
+    expected = expected_migration_heads()
+    monkeypatch.chdir(tmp_path)
+    expected_migration_heads.cache_clear()
+    assert expected and expected_migration_heads() == expected
