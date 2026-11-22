@@ -61,8 +61,7 @@ pagination, 404/403/429/503 states, and no-store behavior in
 
 Do not add unrestricted financial browsing, wildcard search, export,
 impersonation, editing, payment marking or a standing support permission. A
-deleted target loses its grant and user-linked audit references. The premium
-browser dashboard itself remains pending.
+deleted target loses its grant and user-linked audit references. The separate server-rendered browser dashboard now implements the operator workflows above. See admin-dashboard/README.md and docs/jomana-release-handoff.md.
 
 ## UX and security states
 

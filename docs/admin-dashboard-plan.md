@@ -1,6 +1,6 @@
 # Restricted administrator dashboard proposal
 
-Phase 2i.3 route audit at backend 46812c0. The browser application, its server-side session adapter and its infrastructure have not been implemented. Ordinary mobile sessions continue to use their existing origin and contracts.
+Phase 2i.3 route audit at backend 46812c0. This was the pre-implementation design. The browser application and session adapter now live in admin-dashboard/. Deployment, operator ingress and production audit operations remain pending. Ordinary mobile sessions continue to use their existing origin and contracts.
 
 ## Capability matrix
 
@@ -25,11 +25,11 @@ Use a small server-rendered TypeScript application (for example Fastify with esc
 
 Issue a random opaque __Host- cookie with Secure, HttpOnly, SameSite=Strict, Path=/ and no Domain. Proposed first version uses one BFF process with bounded in-memory session state, short idle/absolute deadlines and no persistent token cache. Restart requires sign-in. Store upstream credentials only server-side; discard password and codes immediately. Rotate handle on sign-in and privilege change. Clear state on logout/expiry and attempt upstream revocation on logout, eviction and graceful shutdown. Unexpected process death may leave an upstream session valid until revoked or expired; document own-device revocation and keep a short BFF lifetime. Do not report remote revocation as successful on an outage. No multi-replica rollout without a reviewed session strategy.
 
-Check exact Origin and a session-bound CSRF token on every browser action, including sign-in, lookup, grant actions and sensitive page reads. Use POST forms for sensitive inputs and translate server-side to the upstream method. No generic proxy, cross-origin credentials, URL-based bearer, browser storage, third-party analytics or service worker. Enforce no-store, restrictive CSP (self-hosted assets, frame-ancestors none, object-src none, base-uri none, form-action self), HSTS, nosniff and no-referrer. Suppress query strings, form data, cookies, headers and upstream bodies from logs across both hops. Clear sensitive content on logout, navigation and expiry; test browser history restoration. Display freshness and role from /admin/auth/me. Never silently renew MFA or prefetch support data.
+Check exact Origin and a session-bound CSRF token on every browser action, including sign-in, lookup, grant actions and sensitive page reads. Use POST forms for sensitive inputs and translate server-side to the upstream method. No generic proxy, cross-origin credentials, URL-based bearer, browser storage, third-party analytics or service worker. Enforce no-store, restrictive CSP (self-hosted assets, frame-ancestors none, object-src none, base-uri none, form-action self), HSTS, nosniff and same-origin referrer policy. Chromium requires a usable Origin on same-origin form POSTs. Suppress query strings, form data, cookies, headers and upstream bodies from logs across both hops. Clear sensitive content on logout, navigation and expiry; test browser history restoration. Display freshness and role from /admin/auth/me. Never silently renew MFA or prefetch support data.
 
 ## Implementation and acceptance sequence
 
-The following module names refer to a proposed separate admin project. They do not exist as part of this phase.
+The following module names refer to a proposed separate admin project. The implemented modules are server.mts, console.mts and layout.mts; the names in this original roadmap describe intended responsibilities.
 
 | Phase and dependency | Proposed modules and existing API coverage | Automated gate | Manual acceptance |
 |---|---|---|---|
