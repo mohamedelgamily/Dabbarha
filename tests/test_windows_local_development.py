@@ -234,3 +234,12 @@ def test_windows_scripts_keep_loopback_default_and_require_explicit_lan_mode():
     assert "New-NetFirewallRule" not in start
     assert "192.168.100.7" not in start
     assert "$ApplyMigrations" in start and "apply-migrations" in start
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="requires native Windows file ACLs")
+def test_native_windows_acl_policy():
+    subprocess.run(
+        ["powershell.exe", "-NoProfile", "-NonInteractive", "-File",
+         str(REPO / "tests" / "windows-local-acl.tests.ps1")],
+        check=True,
+    )

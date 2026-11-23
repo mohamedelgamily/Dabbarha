@@ -366,3 +366,19 @@ and a complete backend suite (756 cases at Phase 2h.2, 757 at the dashboard hand
 zero failures, errors, skips, deselections or expected failures. The existing
 Starlette/httpx warning is acceptable. Send the log path and Windows smoke
 results for review, including the frontend commit used.
+
+### Windows file permission check
+
+From the backend checkout, run the native regression check and then setup as
+your ordinary Windows account. The check uses a new temporary directory.
+
+```powershell
+.\tests\windows-local-acl.tests.ps1
+.\scripts\setup-local-windows.ps1
+```
+
+Setup verifies the owner SID and protected DACL before configuring secrets. A
+single explicit FullControl allow entry for that SID requires no ACL write.
+Other descriptors require repair and a fresh read before setup can continue.
+If it stops, share the operation, exception type, error code and initial
+compliance status from the diagnostic. Keep the configuration file private.

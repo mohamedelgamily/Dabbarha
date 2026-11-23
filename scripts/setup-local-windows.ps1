@@ -33,29 +33,8 @@ if ($LASTEXITCODE -ne 0) { throw '.env.local is not ignored by Git. Refusing to 
 & $python -I (Join-Path $repoRoot 'scripts\local_windows_config.py') check-config-path --root $repoRoot
 if ($LASTEXITCODE -ne 0) { throw 'Refusing to change permissions on an unsafe configuration path.' }
 $config = Join-Path $repoRoot '.env.local'
-try {
-    if (Test-Path -LiteralPath $config) {
-        $configItem = Get-Item -Force -LiteralPath $config
-        if (($configItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
-            throw 'Symbolic links are not accepted.'
-        }
-    } else {
-        [void](New-Item -ItemType File -Path $config)
-    }
-    $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
-    $acl = Get-Acl -LiteralPath $config
-    $acl.SetAccessRuleProtection($true, $false)
-    foreach ($existingRule in @($acl.Access)) { $acl.RemoveAccessRuleSpecific($existingRule) }
-    $rule = [System.Security.AccessControl.FileSystemAccessRule]::new(
-        $identity,
-        [System.Security.AccessControl.FileSystemRights]::FullControl,
-        [System.Security.AccessControl.AccessControlType]::Allow
-    )
-    [void]$acl.AddAccessRule($rule)
-    Set-Acl -LiteralPath $config -AclObject $acl
-} catch {
-    throw 'Could not restrict .env.local access to the current Windows account. Review its file permissions before starting the API.'
-}
+. (Join-Path $PSScriptRoot 'windows-local-acl.ps1')
+Protect-LocalConfigFile -Path $config
 
 & $python -I (Join-Path $repoRoot 'scripts\local_windows_config.py') ensure --root $repoRoot
 if ($LASTEXITCODE -ne 0) { throw 'Local configuration was not created or validated. No secret values were displayed.' }
